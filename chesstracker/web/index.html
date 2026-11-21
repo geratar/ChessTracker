@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ChessTracker</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="logo">♞ ChessTracker</div>
+  <nav>
+    <button data-tab="setup" class="tab active">Setup</button>
+    <button data-tab="play" class="tab">Play</button>
+    <button data-tab="library" class="tab">Library</button>
+  </nav>
+  <button id="settingsBtn" class="ghost" title="Settings">⚙ Settings</button>
+</header>
+
+<main>
+  <!-- ============ SETUP WIZARD ============ -->
+  <section id="setup" class="view active">
+    <ol class="steps">
+      <li data-step="1" class="current">Camera</li>
+      <li data-step="2">Board corners</li>
+      <li data-step="3">Start</li>
+    </ol>
+
+    <div class="step" id="step1">
+      <div class="split">
+        <div class="media"><img class="cam" src="/stream.mjpg?view=camera" alt="camera"></div>
+        <div class="panel">
+          <h2>1. Pick your camera</h2>
+          <p>Choose the camera that shows your chessboard.</p>
+          <select id="cameraSelect"><option>Searching...</option></select>
+          <button id="scanBtn" class="ghost">Search again</button>
+          <p class="hint" id="camStatus"></p>
+          <div class="nav"><button id="toStep2" class="primary">Next</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step hidden" id="step2">
+      <div class="split">
+        <div class="media clickable" id="calibArea">
+          <img class="cam" id="calibImg" src="/stream.mjpg?view=camera" alt="camera" draggable="false">
+        </div>
+        <div class="panel">
+          <h2>2. Mark the board</h2>
+          <p>Click the <b>4 corners of the 64 squares</b> (not the wooden frame), in any order.
+             Drag a red circle to fine-tune it.</p>
+          <div class="row">
+            <button id="undoCorner" class="ghost">Undo corner</button>
+            <button id="clearCorners" class="ghost">Clear</button>
+          </div>
+          <p>Check the straightened board below. <b>a1</b> must be White's bottom-left square.</p>
+          <div class="warp"><img id="warpImg" alt="Click the 4 corners to see the straightened board"></div>
+          <button id="rotateBtn">↻ Rotate a1</button>
+          <p class="hint" id="orientHint"></p>
+          <div class="nav">
+            <button id="back1" class="ghost">Back</button>
+            <button id="toStep3" class="primary">Save &amp; next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step hidden" id="step3">
+      <div class="split">
+        <div class="media"><img class="cam" src="/stream.mjpg?view=camera" alt="camera"></div>
+        <div class="panel">
+          <h2>3. Ready to play</h2>
+          <ol class="tips">
+            <li>Set up the pieces in the starting position.</li>
+            <li>Take your hands off the board.</li>
+            <li>Press <b>Start tracking</b>, wait for "Ready", then play normally.</li>
+          </ol>
+          <p class="hint">Tips: keep the camera steady and high, avoid direct sunlight on the board.</p>
+          <div class="nav">
+            <button id="back2" class="ghost">Back</button>
+            <button id="startBtn" class="primary big">Start tracking</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PLAY ============ -->
+  <section id="play" class="view">
+    <div class="play">
+      <div class="boardcol">
+        <div class="boardwrap" id="boardWrap">
+          <img id="boardImg" alt="board">
+          <div class="grid" id="boardGrid"></div>
+        </div>
+        <div class="status" id="status">Not tracking yet. Use Setup to start.</div>
+        <div class="ask hidden" id="ask"></div>
+      </div>
+      <div class="side">
+        <div class="camsmall"><img class="cam" src="/stream.mjpg?view=camera" alt="camera">
+          <span class="badge" id="stillBadge"></span></div>
+        <div class="moves" id="moveList"></div>
+        <div class="buttons">
+          <button id="flipBtn" title="Show the board from the other side">⇅ Flip board</button>
+          <button id="fixBtn" title="The last move was detected wrong: click the right move on the board">✎ Fix last move</button>
+          <button id="enterBtn" title="Enter a move the camera missed: click it on the board">＋ Enter a move</button>
+          <button id="undoBtn" title="Take back the last move (put the pieces back too)">↶ Undo</button>
+          <button id="saveBtn" class="primary">💾 Save game</button>
+          <button id="newBtn" class="ghost">New game</button>
+        </div>
+        <p class="hint" id="clickHint"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LIBRARY ============ -->
+  <section id="library" class="view">
+    <div class="play">
+      <div class="boardcol">
+        <div class="boardwrap"><img id="replayImg" alt="replay board"></div>
+        <div class="replaynav">
+          <button id="rFirst">⏮</button><button id="rPrev">◀</button>
+          <span id="rPos">-</span>
+          <button id="rNext">▶</button><button id="rLast">⏭</button>
+          <button id="rPlay">▷ Auto</button>
+        </div>
+      </div>
+      <div class="side">
+        <h2>Saved games</h2>
+        <div id="gameList" class="gamelist"><p class="hint">No saved games yet.</p></div>
+        <div id="replayMoves" class="moves"></div>
+        <div class="buttons"><button id="copyPgn" class="ghost">Copy PGN</button>
+          <button id="deleteGame" class="ghost danger">Delete game</button></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Settings dialog -->
+<dialog id="settingsDlg">
+  <h2>Settings</h2>
+  <p>Board style</p>
+  <div class="themes" id="themes"></div>
+  <label class="check"><input type="checkbox" id="flipSetting"> Black at the bottom</label>
+  <div class="nav"><button id="closeSettings" class="primary">Done</button></div>
+</dialog>
+
+<!-- Save dialog -->
+<dialog id="saveDlg">
+  <h2>Save game</h2>
+  <label>Name <input id="gameName" placeholder="e.g. Saturday game vs Anna"></label>
+  <p class="hint">The date is added automatically.</p>
+  <div class="nav"><button id="cancelSave" class="ghost">Cancel</button><button id="doSave" class="primary">Save</button></div>
+</dialog>
+
+<footer>Piece set "cburnett" by Colin M.L. Burnett (CC BY-SA 3.0), via python-chess.</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>

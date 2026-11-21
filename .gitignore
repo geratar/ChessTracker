@@ -1,6 +1,7 @@
-__pycache__/
-.venv/
-venv/
 .pytest_cache/
-data/recordings/
+.venv/
+__pycache__/
 config.json
+data/
+data/recordings/
+venv/

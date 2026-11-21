@@ -19,11 +19,16 @@ No neural nets, paid APIs, databases or frameworks unless simpler methods demons
 - `chesstracker/detector.py`: frame alignment (phase correlation), motion gate, per-square change scores (L + edges)
 - `chesstracker/tracker.py`: state machine: still -> consistent changes -> match_move -> apply / ask / report; undo
 - `chesstracker/board_view.py`: 2D board drawing
-- `calibrate.py`: Phase 1 app; `track.py`: Phase 2 live app; `replay.py`: run tracker on a video
+- `app.py` + `chesstracker/engine.py` + `chesstracker/web/`: main app. Local HTTP server (stdlib), browser UI
+  (wizard, play, library, settings), MJPEG camera streams, board SVG via chess.svg (cburnett pieces).
+  Data in `data/` (calibration.json, settings.json, library/*.pgn), gitignored.
+- `ChessTracker.command` / `.bat`: the only launchers the user should need.
+- `calibrate.py`, `track.py` (OpenCV-window versions), `replay.py` (tracker on a video): developer tools
 - `tests/fixtures/game1`: real frames from the user's board (e4 d5 exd5 c6 + hands) for regression tests
 - `tests/`: pytest, synthetic frames (no camera needed)
 
 ## Conventions
+- No new heavy dependencies: UI is plain HTML/JS served by Python's http.server.
 - Warped board: white at bottom, a1 bottom-left. `rotation` (0-3 quarter turns) picks a1's physical corner.
 - Clicked corners are reordered clockwise automatically; click order doesn't matter.
 - Previous confirmed python-chess position is the source of truth; never apply an uncertain move.

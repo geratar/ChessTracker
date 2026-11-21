@@ -29,7 +29,13 @@
 - Fixes: missed-move recovery (offers two-move sequences to confirm), a single strongly changed square
   asks instead of being silently absorbed, motion threshold adapts to camera noise. 41 tests pass.
 
+## Phase 3 (first version, done 2026-11-21)
+- Browser app with setup wizard, live board with real pieces, themes, flip, fix-last-move and
+  enter-move by clicking squares, confirmation buttons, save to library, replay. 46 tests pass;
+  UI exercised end to end in headless Chrome on the recording.
+
 ## Next
+- User tests the app live on the Mac.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,
   pieces adjusted without moving). Tune thresholds on it and add it to the fixtures.
 - Then Phase 3 (GUI polish, manual correction, save/load/replay games).

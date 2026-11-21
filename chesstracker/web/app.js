@@ -333,6 +333,13 @@ window.addEventListener("keydown", (e) => {
   if (!$("library").classList.contains("active")) return;
   if (e.key === "ArrowLeft") go(ply - 1); if (e.key === "ArrowRight") go(ply + 1);
 });
+$("renameGame").onclick = async () => {
+  if (!game) return alert("Open a saved game first.");
+  const name = prompt("New name for this game:", game.name);
+  if (name === null || !name.trim()) return;
+  await post("/api/library/rename", { id: game.id, name: name.trim() });
+  game.name = name.trim(); loadLibrary();
+};
 $("copyPgn").onclick = () => { if (game) navigator.clipboard.writeText(game.pgn); };
 $("deleteGame").onclick = async () => {
   if (game && confirm(`Delete "${game.name}"?`)) { await post("/api/library/delete", { id: game.id }); game = null; ana = null; renderAnalysis(); $("replayImg").removeAttribute("src"); $("replayMoves").innerHTML = ""; loadLibrary(); }

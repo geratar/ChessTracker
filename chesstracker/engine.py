@@ -322,6 +322,19 @@ class Engine:
         self.load_game(game_id)   # validates the id
         return self.analyzer.status(game_id)
 
+    def rename_game(self, game_id, name):
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("The name can't be empty")
+        p = (self.library_dir / game_id).resolve()
+        if p.parent != self.library_dir.resolve() or not p.exists():
+            raise ValueError("Game not found")
+        with self.lock:
+            with open(p) as f:
+                g = chess.pgn.read_game(f)
+            g.headers["Event"] = name
+            p.write_text(str(g) + "\n")   # same file name, so the saved analysis stays linked
+
     def delete_game(self, game_id):
         p = (self.library_dir / game_id).resolve()
         if p.parent == self.library_dir.resolve() and p.exists():

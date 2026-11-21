@@ -104,3 +104,16 @@ def test_analysis_end_to_end(engine):
     assert len(res["evals"]) == 8 and len(res["moves"]) == 7
     assert res["moves"][5]["mark"] == "??"           # ...Nf6 allows mate
     assert res["evals"][-1]["cp"] == 10000
+
+
+def test_rename_keeps_moves_and_result(engine):
+    engine.start_tracking()
+    engine.manual_move("d4")
+    gid = engine.save_game("Old name", "0-1")
+    engine.rename_game(gid, "Club night vs Anna")
+    g = engine.load_game(gid)
+    assert g["name"] == "Club night vs Anna" and g["result"] == "0-1" and g["plies"][1]["san"] == "d4"
+    with pytest.raises(ValueError):
+        engine.rename_game(gid, "  ")
+    with pytest.raises(ValueError):
+        engine.rename_game("../x.pgn", "a")

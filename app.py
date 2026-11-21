@@ -115,6 +115,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/library/save": lambda: {"id": e.save_game(d.get("name"), d.get("result", "*"))},
                 "/api/analyze": lambda: e.analyze(d["id"]),
                 "/api/library/delete": lambda: e.delete_game(d["id"]),
+                "/api/library/rename": lambda: e.rename_game(d["id"], d.get("name")),
                 "/api/record": lambda: e.toggle_recording(),
             }
             if path not in actions:

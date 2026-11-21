@@ -2,7 +2,8 @@
 
 ## Goal
 Webcam tracks a physical wooden chess game; moves appear on a digital board within 2-3 s.
-User is a beginner programmer. Develops on Windows; camera runs on a macOS laptop.
+User is a beginner programmer. Camera runs on a macOS laptop (also used a Windows PC). User does not want
+to install dev tools; Claude develops in the GitHub repo geratar/ChessTracker and tests on uploaded recordings.
 Code must stay cross-platform.
 
 ## Stack
@@ -15,7 +16,11 @@ No neural nets, paid APIs, databases or frameworks unless simpler methods demons
 - `chesstracker/calibration.py`: 4 corners -> homography -> top-down image, square geometry, JSON save/load
 - `chesstracker/overlay.py`: debug drawing
 - `chesstracker/moves.py`: legal-move matching from a set of changed squares (accept / ambiguous / no_move / promotion)
-- `calibrate.py`: Phase 1 OpenCV-window app
+- `chesstracker/detector.py`: frame alignment (phase correlation), motion gate, per-square change scores (L + edges)
+- `chesstracker/tracker.py`: state machine: still -> consistent changes -> match_move -> apply / ask / report; undo
+- `chesstracker/board_view.py`: 2D board drawing
+- `calibrate.py`: Phase 1 app; `track.py`: Phase 2 live app; `replay.py`: run tracker on a video
+- `tests/fixtures/game1`: real frames from the user's board (e4 d5 exd5 c6 + hands) for regression tests
 - `tests/`: pytest, synthetic frames (no camera needed)
 
 ## Conventions

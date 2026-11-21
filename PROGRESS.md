@@ -18,9 +18,12 @@
 - Tall pieces lean toward the camera's far side in the top-down view; Phase 2 must sample
   the lower part of each square (or a configurable offset).
 
-## In progress
-- Phase 2: move matching done and tested (`moves.py`, 12 tests). Next: stability gate, frame re-alignment, per-square change detection, tuned on a recording.
+## Phase 2 (first version, done)
+- moves.py matching (occlusion-tolerant), detector.py, tracker.py, track.py UI, replay.py.
+- On the first recording it detects e4 d5 exd5 c6 with no false moves; ~1 s after the hand leaves.
+- 35 tests pass (incl. real-frame regression, hands, lighting, board shift, undo, duplicates).
 
 ## Next
-- User runs `calibrate.py` on the Mac, calibrates, saves a few snapshots and a short recording
-  (start position, a few moves, a hand over the board). Use them to design Phase 2 detection.
+- User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,
+  pieces adjusted without moving). Tune thresholds on it and add it to the fixtures.
+- Then Phase 3 (GUI polish, manual correction, save/load/replay games).

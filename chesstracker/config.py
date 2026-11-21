@@ -26,10 +26,11 @@ def load_config(path=CONFIG_PATH):
             user = json.loads(path.read_text())
         except json.JSONDecodeError as e:
             raise SystemExit(f"config.json is not valid JSON: {e}")
-        unknown = set(user) - set(DEFAULTS)
+        from .tracker import TRACKER_DEFAULTS
+        unknown = set(user) - set(DEFAULTS) - set(TRACKER_DEFAULTS)
         if unknown:
             print(f"Warning: unknown settings in config.json ignored: {sorted(unknown)}")
-        cfg.update({k: v for k, v in user.items() if k in DEFAULTS})
+        cfg.update(user)
     return cfg
 
 

@@ -44,14 +44,19 @@ class MatchResult:
     candidates: list = field(default_factory=list)   # best first
 
 
-def match_move(board, changed, w_missing=1.0, w_extra=0.5, min_score=1.5, min_margin=1.0,
-               max_candidates=5):
+def _near(sq, squares):
+    return any(chess.square_distance(sq, e) == 1 for e in squares)
+
+
+def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, min_score=1.5,
+               min_margin=1.0, max_candidates=5):
     """Rank legal moves by how well they explain `changed` (iterable of squares).
 
     score = matched - w_missing * missing - w_extra * extra
       matched: expected squares that changed
       missing: expected squares that did NOT change
-      extra:   changed squares the move doesn't explain (occlusion, shadows)
+      extra:   changed squares the move doesn't explain (occlusion, shadows);
+               ones next to an expected square cost less (tall pieces hide neighbours)
     Accept only when the best move scores >= min_score AND beats the runner-up
     by >= min_margin; otherwise ask the user.
     """
@@ -64,8 +69,10 @@ def match_move(board, changed, w_missing=1.0, w_extra=0.5, min_score=1.5, min_ma
         exp = expected_changes(board, mv)
         matched = len(exp & changed)
         missing = len(exp - changed)
-        extra = len(changed - exp)
-        s = matched - w_missing * missing - w_extra * extra
+        extras = changed - exp
+        near = sum(1 for q in extras if _near(q, exp))
+        extra = len(extras)
+        s = matched - w_missing * missing - w_extra * (extra - near) - w_extra_near * near
         scored.append(Candidate(mv, s, matched, missing, extra))
 
     # promotions to different pieces look identical: collapse to one entry (queen)

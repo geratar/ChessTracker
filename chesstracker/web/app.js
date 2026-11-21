@@ -159,23 +159,43 @@ $("newBtn").onclick = () => guardUnsaved("Start a new game? Save this one first?
   if (S.unsaved || confirm("Start a new game? Set up the pieces in the starting position.")) post("/api/new_game");
 });
 $("flipBtn").onclick = () => post("/api/settings", { flipped: !S.settings.flipped });
-let afterSave = null;
-function openSave(then) {
+let afterSave = null, finishing = false;
+function openSave(then, finish) {
   if (!S.moves.length) return alert("No moves to save yet.");
-  afterSave = then || null;
+  afterSave = then || null; finishing = !!finish;
+  $("saveTitle").textContent = finish ? "Finish game" : "Save game";
+  $("doSave").textContent = finish ? "Finish & save" : "Save";
+  $("doSaveAnalyze").classList.toggle("hidden", !finish);
   $("gameName").value = "";
   const r = document.querySelector(`input[name=result][value="${S.outcome}"]`) || document.querySelector('input[name=result][value="*"]');
   r.checked = true;
+  if (finish && S.outcome === "*") document.querySelectorAll("input[name=result]").forEach(x => x.checked = false);
   $("saveDlg").showModal();
 }
 $("saveBtn").onclick = () => openSave();
 $("cancelSave").onclick = () => { afterSave = null; $("saveDlg").close(); };
-$("doSave").onclick = async () => {
-  const result = document.querySelector("input[name=result]:checked").value;
-  await post("/api/library/save", { name: $("gameName").value, result });
+async function doSave(analyze) {
+  const picked = document.querySelector("input[name=result]:checked");
+  if (!picked) return alert("Choose who won (or Draw / Not finished).");
+  const result = picked.value;
+  const saved = await post("/api/library/save", { name: $("gameName").value, result });
   $("saveDlg").close(); $("status").textContent = "Game saved to the Library.";
   S.unsaved = false;
+  if (finishing) {
+    finishing = false; afterSave = null;
+    await post("/api/tracking/stop");
+    showTab("library", true);
+    await openGame(saved.id);
+    if (analyze) $("analyzeBtn").click();
+    return;
+  }
   const then = afterSave; afterSave = null; if (then) then();
+}
+$("doSave").onclick = () => doSave(false);
+$("doSaveAnalyze").onclick = () => doSave(true);
+$("finishBtn").onclick = () => {
+  if (S.mode !== "tracking") return alert("No game in progress.");
+  openSave(null, true);
 };
 
 // ask before an unsaved game could be lost

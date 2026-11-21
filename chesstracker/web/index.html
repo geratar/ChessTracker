@@ -104,7 +104,8 @@
           <button id="fixBtn" title="The last move was detected wrong: click the right move on the board">✎ Fix last move</button>
           <button id="enterBtn" title="Enter a move the camera missed: click it on the board">＋ Enter a move</button>
           <button id="undoBtn" title="Take back the last move (put the pieces back too)">↶ Undo</button>
-          <button id="saveBtn" class="primary">💾 Save game</button>
+          <button id="finishBtn" class="primary">🏁 Finish game</button>
+          <button id="saveBtn">💾 Save game</button>
           <button id="newBtn" class="ghost">New game</button>
           <button id="recBtn" class="ghost" title="Record the camera video so Claude can check detection">⏺ Record video</button>
         </div>
@@ -157,7 +158,7 @@
 
 <!-- Save dialog -->
 <dialog id="saveDlg">
-  <h2>Save game</h2>
+  <h2 id="saveTitle">Save game</h2>
   <label>Name <input id="gameName" placeholder="e.g. Saturday game vs Anna"></label>
   <p>Result</p>
   <div class="results" id="results">
@@ -167,7 +168,8 @@
     <label><input type="radio" name="result" value="*" checked> Not finished</label>
   </div>
   <p class="hint">The date is added automatically.</p>
-  <div class="nav"><button id="cancelSave" class="ghost">Cancel</button><button id="doSave" class="primary">Save</button></div>
+  <div class="nav"><button id="cancelSave" class="ghost">Cancel</button><button id="doSave" class="primary">Save</button>
+    <button id="doSaveAnalyze" class="primary hidden">Save &amp; analyze</button></div>
 </dialog>
 
 <!-- Unsaved game dialog -->

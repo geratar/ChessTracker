@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 import chess
 import chess.svg
 
+from chesstracker import updater
 from chesstracker.engine import THEMES, Engine
 
 WEB = Path(__file__).resolve().parent / "chesstracker" / "web"
@@ -65,7 +66,9 @@ class Handler(BaseHTTPRequestHandler):
         if url.path.startswith("/static/"):
             return self._file(WEB / url.path[len("/static/"):])
         if url.path == "/api/state":
-            return self._send(200, e.state())
+            return self._send(200, {**e.state(), "started": STARTED})
+        if url.path == "/api/update/check":
+            return self._send(200, check_update(force=q.get("force") == "1"))
         if url.path == "/api/board.svg":
             s = e.settings
             fen = q.get("fen") or e.state()["fen"]
@@ -117,6 +120,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/library/delete": lambda: e.delete_game(d["id"]),
                 "/api/library/rename": lambda: e.rename_game(d["id"], d.get("name")),
                 "/api/record": lambda: e.toggle_recording(),
+                "/api/update/apply": lambda: apply_update(),
             }
             if path not in actions:
                 return self._send(404, {"error": "not found"})
@@ -149,6 +153,36 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
 
+STARTED = time.time()
+_update = {"t": 0, "result": None}
+
+
+def check_update(force=False):
+    if force or _update["result"] is None or time.time() - _update["t"] > 600:
+        _update["result"], _update["t"] = updater.check(), time.time()
+    return _update["result"]
+
+
+def apply_update():
+    info = check_update(force=True)
+    if info.get("error"):
+        raise ValueError(info["error"])
+    if not info.get("available"):
+        return {"updated": False}
+    reqs = updater.apply(info["commit"], info["files"])
+    print(f"Updated {len(info['files'])} files. Restarting...")
+
+    def restart():
+        time.sleep(0.5)                 # let the reply reach the browser
+        if reqs:
+            print("Installing new requirements...")
+            updater.install_requirements()
+        ENGINE.shutdown()               # free the camera for the new process
+        updater.restart()
+    threading.Thread(target=restart, daemon=True).start()
+    return {"updated": True, "files": len(info["files"])}
+
+
 def main():
     global ENGINE
     ap = argparse.ArgumentParser()
@@ -157,7 +191,14 @@ def main():
     ap.add_argument("--source", help="video file instead of the camera (for testing)")
     args = ap.parse_args()
     ENGINE = Engine(source=args.source)
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    for attempt in range(20):          # after an update the old process may still hold the port
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+            break
+        except OSError:
+            if attempt == 19:
+                raise
+            time.sleep(0.5)
     server.daemon_threads = True
     url = f"http://localhost:{args.port}"
     print(f"ChessTracker is running at {url}  (close this window to quit)")

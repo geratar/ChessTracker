@@ -84,3 +84,4 @@ footer { color:#6e6c69; font-size:11px; padding:10px 20px; }
 .best { margin:8px 0 0; font-size:14px; }
 .mark-qq { color:#e05a4f; font-weight:700; } .mark-q { color:#e6a23c; font-weight:700; } .mark-qe { color:#e6d23c; font-weight:700; }
 .gamelist .res { float:right; color:var(--text); font-weight:600; }
+.banner { background:#2f4f2a; color:#fff; padding:8px 16px; display:flex; gap:12px; align-items:center; justify-content:center; }

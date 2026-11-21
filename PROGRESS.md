@@ -72,6 +72,13 @@
 - Replaying both clips at 0.67x / 0.5x / 0.4x resolution: lower resolution gave extra questions,
   so more pixels does help. 63 tests pass.
 
+## In-app update (11:50)
+- macOS asked "Open Anyway" for every downloaded ZIP. Now: banner + Settings > Updates fetch the latest
+  code from GitHub with Python (no git/token), write only changed files (git blob hashes), keep
+  data/, .venv/, config.json, reinstall requirements if they changed, restart in place, page reloads.
+  Python-written files aren't quarantined, so the approval is needed once more, never again.
+- Needs the repo to be public. Restart tested live (Linux); 66 tests pass.
+
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,

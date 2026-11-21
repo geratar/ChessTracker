@@ -347,9 +347,38 @@ $("deleteGame").onclick = async () => {
 
 // ---------------- polling ----------------
 let warpOn = false;
+// ---------------- updates ----------------
+let started = null, updating = false;
+function showUpdate(u) {
+  const avail = !!(u && u.available);
+  $("updateBar").classList.toggle("hidden", !avail || updating);
+  $("updateNow2").classList.toggle("hidden", !avail);
+  $("updateInfo").textContent = !u ? "Checking..." : u.error ? u.error :
+    avail ? `New version: ${u.message} (${(u.date || "").slice(0, 10)})` : "You have the latest version.";
+}
+async function checkUpdate(force) {
+  try { showUpdate(await api("/api/update/check" + (force ? "?force=1" : ""))); } catch (e) {}
+}
+function doUpdate() {
+  guardUnsaved("Updating restarts the app. Save this game first?", async () => {
+    updating = true; $("updateBar").classList.add("hidden"); $("settingsDlg").close();
+    $("status").textContent = "Updating... the page reloads by itself in a few seconds.";
+    try {
+      const r = await post("/api/update/apply");
+      if (!r.updated) { updating = false; checkUpdate(true); }
+    } catch (e) { updating = false; }
+  });
+}
+$("updateNow").onclick = doUpdate;
+$("updateNow2").onclick = doUpdate;
+$("checkUpdate").onclick = () => { showUpdate(null); checkUpdate(true); };
+checkUpdate(false);
+
 async function poll() {
   try {
     S = await api("/api/state");
+    if (started === null) started = S.started;
+    else if (S.started !== started) { S.unsaved = false; location.reload(); return; }
     renderPlay();
     const hasCal = S.calibration.corners.length === 4;
     if (hasCal && !warpOn) { $("warpImg").src = "/stream.mjpg?view=board"; warpOn = true; }
@@ -360,7 +389,7 @@ async function poll() {
     $("detailHint").textContent = px ? `Board detail: ${px} pixels per square` + (fs ? ` (camera ${fs[0]}×${fs[1]})` : "") +
       (px >= 50 ? ". Good." : px >= 30 ? ". OK." : ". Low: moves may be missed. Mark the corners tightly, or bring the camera closer if you can.") : "";
     if (game) renderReplay.lastTheme !== S.settings.theme + S.settings.flipped && (renderReplay.lastTheme = S.settings.theme + S.settings.flipped, renderReplay());
-  } catch (e) { $("status").textContent = "Lost connection to the app. Is its window still open?"; }
+  } catch (e) { $("status").textContent = updating ? "Updating... the page reloads by itself in a few seconds." : "Lost connection to the app. Is its window still open?"; }
   setTimeout(poll, 400);
 }
 

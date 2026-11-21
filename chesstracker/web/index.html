@@ -15,6 +15,8 @@
   </nav>
   <button id="settingsBtn" class="ghost" title="Settings">⚙ Settings</button>
 </header>
+<div id="updateBar" class="banner hidden">A new version of ChessTracker is available.
+  <button id="updateNow" class="primary">Update now</button></div>
 
 <main>
   <!-- ============ SETUP WIZARD ============ -->
@@ -155,6 +157,10 @@
   <p>Board style</p>
   <div class="themes" id="themes"></div>
   <label class="check"><input type="checkbox" id="flipSetting"> Black at the bottom</label>
+  <p>Updates</p>
+  <p class="hint" id="updateInfo">Not checked yet.</p>
+  <div class="row"><button id="checkUpdate" class="ghost">Check for updates</button>
+    <button id="updateNow2" class="primary hidden">Update now</button></div>
   <div class="nav"><button id="closeSettings" class="primary">Done</button></div>
 </dialog>
 

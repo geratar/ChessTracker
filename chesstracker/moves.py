@@ -110,6 +110,16 @@ def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, mi
         c = Candidate(moves[0], s, matched, len(missing_sq), len(extras), list(moves))
         if strengths is not None:
             c.weight = _weighted(exp, zone, hidden, strengths, shadows is not None)
+            if shadows:
+                # A piece that arrives on (or leaves) a square also covers (or uncovers) the empty
+                # square right behind it in the camera's view: that square must change too.
+                for q in exp:
+                    if (q in occ_before) == (q in occ_after):
+                        continue        # same occupancy (a capture): nothing new is hidden
+                    for z in shadows[q]:
+                        if (chess.square_distance(z, q) == 1 and z not in occ_before and z not in occ_after
+                                and z not in exp and strengths.get(z, 0.0) < 0.5):
+                            c.weight -= 1.0
         return c
 
     scored = [score([mv]) for mv in board.legal_moves]
@@ -122,17 +132,31 @@ def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, mi
             by_squares[key] = c
     ranked = sorted(by_squares.values(), key=lambda c: c.score, reverse=True)[:max_candidates]
 
+    def complete(c, near_limit=1.5):
+        """Every expected square changed clearly, and every other change is explained: inside
+        the lean zone of a moved piece, or next to a moved square and not too strong."""
+        exp = expected_changes(board, *c.moves)
+        if any(strengths.get(q, 0.0) < 0.5 for q in exp):
+            return False
+        zone = set().union(*(shadows[q] for q in exp)) if shadows else set()
+        return all(q in zone or (_near(q, exp) and strengths.get(q, 0.0) < near_limit)
+                   for q in changed - exp)
+
+    if strengths is not None and ranked and ranked[0].score < min_score:
+        # Strays from leaning pieces or pieces set down beside the board can push a real move
+        # under the count-based bar. One move that fully explains the change is still a move.
+        singles = sorted([c for c in by_squares.values() if complete(c, 2.0) and not c.move.promotion],
+                         key=lambda c: c.weight, reverse=True)
+        if singles and singles[0].weight > 0 and (
+                len(singles) == 1 or singles[0].weight - singles[1].weight >= rel_margin * singles[0].weight):
+            return MatchResult(ACCEPT, move=singles[0].move,
+                               candidates=singles[:1] + [c for c in ranked if c is not singles[0]][:max_candidates - 1])
+
     if not ranked or ranked[0].score < min_score:
         if allow_two and len(changed) >= 3:
             seqs = _match_sequences(board, changed, score, min_score, max_plies)
+            full = []
             if seqs and strengths is not None:
-                def complete(c):
-                    # every expected square changed clearly, every strong change is explained
-                    # (or sits right next to an explained square: tall pieces lean over)
-                    exp = expected_changes(board, *c.moves)
-                    if any(strengths.get(q, 0.0) < 0.5 for q in exp):
-                        return False
-                    return all(_near(q, exp) and strengths.get(q, 0.0) < 1.5 for q in changed - exp)
                 full = [c for c in seqs if complete(c) and not any(m.promotion for m in c.moves)]
                 if full:   # the fewest moves that fully explain the changes (e4 d5, not e3 d5 e4)
                     n = min(len(c.moves) for c in full)
@@ -144,6 +168,7 @@ def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, mi
                     best = full[0]
                     return MatchResult(ACCEPT, move=best.move, candidates=[best] + [c for c in seqs if c is not best][:max_candidates - 1])
             if seqs:
+                seqs = full + [c for c in seqs if c not in full]   # simplest full explanations first
                 return MatchResult(TWO_MOVES, candidates=seqs[:max_candidates])
         return MatchResult(NO_MOVE, candidates=ranked)
     if strengths is not None:

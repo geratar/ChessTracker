@@ -122,6 +122,15 @@
 - Blitz clip: 1. e4 d5 2. exd5 Qxd5 3. Nc3 Qa5 4. d4 c6 5. Bd2, all read, no questions (fixtures/blitz).
   Older clips unchanged; no wrong moves on any clip. 78 tests.
 
+## Normal-pace recording 6 (14:10)
+- Broke on: (1) the frame average included frames from the moment a hand left (now only frames with
+  nothing moving); (2) a piece leaning onto the next square / captured pieces set beside the board
+  pushed real moves under the count-based bar (Qc7) - a single move that fully explains the change
+  (lean zones from the shadow map) is now accepted; (3) Qa5 vs Qc5 looked alike - a piece landing on
+  an empty square must also change the empty square right behind it in the camera's view.
+- Clip: 1. e4 d5 2. exd5 Qxd5 3. Nc3 Qa5 4. d4 c6 5. Bd2 Qc7, all correct, one question (right answer
+  listed first). All 6 recordings: no wrong move. fixtures/normal_pace. 79 tests.
+
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,

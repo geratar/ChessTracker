@@ -20,7 +20,7 @@ TRACKER_DEFAULTS = {
     "stable_seconds": 0.13,        # a square (and its neighbours) must be still this long (2 frames) before we look
     "confirm_seconds": 0.0,        # the same changed squares must persist this long after that
     "max_moving_squares": 40,      # more of the board moving than this => wait for everything
-    "max_changed_squares": 8,      # more than this => hand, shadow or bumped board: wait
+    "max_changed_squares": 10,     # more than this => hand, shadow or bumped board: wait
     "absorb_seconds": 3.0,         # unchanged board for this long => refresh reference (lighting drift)
     "min_change_score": 18.0,
     "median_factor": 3.0,
@@ -389,8 +389,9 @@ class Tracker:
         """Keep the last few warped frames of the current still period."""
         n = max(1, int(self.s["average_frames"]))
         shift = self.aligner.shift
-        if (self._avg is None or self._avg_shift is None or
+        if (self._avg is None or self._avg_shift is None or self.motion.moving.any() or
                 max(abs(shift[0] - self._avg_shift[0]), abs(shift[1] - self._avg_shift[1])) > 0.5):
+            # only average frames in which nothing moved: a hand that just left must not be in it
             self._avg, self._avg_shift = deque(maxlen=n), shift
         self._avg.append(warped.astype(np.float32))
 

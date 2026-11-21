@@ -141,6 +141,7 @@ class SquareMotion:
         self.prev = None
         self.still_since = np.full((8, 8), np.nan)
         self.motion = np.zeros((8, 8))
+        self.moving = np.zeros((8, 8), bool)   # moving in the latest frame
 
     def update(self, warped, t):
         n = self.size
@@ -160,6 +161,7 @@ class SquareMotion:
         if self.grow:
             k = 2 * self.grow + 1
             moving = cv2.dilate(moving.astype(np.uint8), np.ones((k, k), np.uint8)) > 0
+        self.moving = moving
         self.still_since[moving] = np.nan
         self.still_since[~moving & np.isnan(self.still_since)] = t
 

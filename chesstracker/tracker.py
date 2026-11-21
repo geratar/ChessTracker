@@ -12,7 +12,7 @@ import chess
 import numpy as np
 
 from .detector import SQUARE_NAMES, Aligner, SquareMotion, change_scores, changed_squares, square_features
-from .moves import (ACCEPT, AMBIGUOUS, PROMOTION, TWO_MOVES, MatchResult, candidates_for_square,
+from .moves import (ACCEPT, AMBIGUOUS, NO_MOVE, PROMOTION, TWO_MOVES, MatchResult, candidates_for_square,
                     expected_changes, match_move)
 
 TRACKER_DEFAULTS = {
@@ -28,7 +28,9 @@ TRACKER_DEFAULTS = {
     "strong_single_factor": 2.0,   # one square changed this strongly => probably a move, ask
     "rel_margin": 0.2,             # best move must explain this much more of the change than the next
     "piece_height": 1.6,           # tallest piece height in square widths (0 = ignore camera geometry)
-    "average_frames": 5,           # average this many still frames to cut camera noise (1 = off)
+    "average_frames": 5,
+    "detect": "auto",              # auto: read moves by itself | tap: only when the player taps
+    "tap_max_wait": 1.5,           # after a tap, wait at most this long for hands to leave           # average this many still frames to cut camera noise (1 = off)
 }
 
 
@@ -53,6 +55,8 @@ class Tracker:
         self.motion = SquareMotion(s["motion_threshold"], s["stable_seconds"])
         self.unsettled = set()         # squares a hand is over (or next to) right now
         self._partial_key = None       # hand position we last judged a partial view for
+        self.tap_at = None             # time of a "move done" tap not handled yet
+        self._quiet = 0                # consecutive frames with nothing moving on the board
         self.ref_feats = None          # board image of the last confirmed position
         self.ref_history = []          # earlier reference images, for undo
         self.pending = None            # MatchResult waiting for the user
@@ -89,6 +93,13 @@ class Tracker:
                 self.motion.rebase(warped)    # our own correction is not motion
         unsettled = {chess.parse_square(SQUARE_NAMES[i]) for i in np.nonzero(~settled.ravel())[0]}
         self.unsettled = unsettled
+        self._quiet = self._quiet + 1 if not self.motion.moving.any() else 0
+        if self.tap_at is not None and self.ref_feats is not None:
+            if self.pending is not None:
+                self.tap_at = None
+                return events
+            self.last_changed, self.evaluated = None, True
+            return self._read_on_tap(square_features(warped), t, events)
         if len(unsettled) > self.s["max_moving_squares"] or (unsettled and self.ref_feats is None):
             self.last_changed, self.changed_since, self.evaluated = None, None, False
             self.unchanged_since = None
@@ -102,6 +113,8 @@ class Tracker:
             events.append(Event("ready", t, "Reference position captured"))
             return events
         if self.pending is not None:
+            return events
+        if self.s["detect"] == "tap":
             return events
 
         scores = change_scores(self.ref_feats, feats)
@@ -172,6 +185,48 @@ class Tracker:
                          "Couldn't work out the move (changes seen on " +
                          " ".join(chess.square_name(q) for q in sorted(changed)) +
                          "). If you moved a piece, use 'Enter a move'.", squares=set(changed)))
+        return events
+
+    def _read_on_tap(self, feats, t, events):
+        """Read the move right after a tap: as soon as nothing moves on the board for two
+        frames (the hand went to the clock), or after tap_max_wait with moving squares left out."""
+        waited = t - self.tap_at
+        if self._quiet < 2 and waited < self.s["tap_max_wait"]:
+            return events
+        self.tap_at = None
+        moving = {chess.parse_square(SQUARE_NAMES[i]) for i in np.nonzero(self.motion.moving.ravel())[0]}
+        scores = change_scores(self.ref_feats, feats)
+        self.last_scores = scores
+        changed = self._changed(scores, moving)
+        self._log_eval(t, changed, scores, moving)
+        result = match_move(self.board, changed, shadows=self.shadows, strengths=self.last_strengths,
+                            rel_margin=self.s["rel_margin"], max_plies=2)
+        if result.status == ACCEPT:
+            best = result.candidates[0] if result.candidates and result.candidates[0].move == result.move else None
+            seq = best.moves if best else [result.move]
+            exp = expected_changes(self.board, *seq)
+            if not exp & moving:
+                ref = self._patched(feats, moving) if moving else feats
+                self.last_feats = ref
+                events.append(self._apply(seq, ref, t))
+                self.last_changed, self.evaluated = None, True
+                return events
+        cands = result.candidates
+        if result.status == NO_MOVE:
+            # A move was certainly made: offer the moves that explain the most of what changed.
+            if self.last_strengths:
+                cands = sorted(cands, key=lambda c: c.weight, reverse=True)
+            cands = [c for c in cands if c.matched >= 1][:3]
+            if not cands and len(changed) == 1:
+                cands = candidates_for_square(self.board, next(iter(changed)))[:3]
+        if cands:
+            self.pending = MatchResult(result.status if result.status != NO_MOVE else AMBIGUOUS, candidates=cands)
+            kind = {PROMOTION: "promotion", TWO_MOVES: "two_moves"}.get(result.status, "ambiguous")
+            events.append(Event(kind, t, "Which move? " + ", ".join(self.describe(c) for c in cands[:3]),
+                                candidates=cands, squares=set(changed)))
+        else:
+            events.append(Event("unrecognized", t, "No move seen. Tap again once your hand is off the "
+                                "board, or use 'Enter a move'.", squares=set(changed)))
         return events
 
     def _decide_partial(self, changed, unsettled, t, events):
@@ -271,6 +326,11 @@ class Tracker:
             self.ref_feats = self.ref_history.pop()
         self.last_changed, self.evaluated = None, False
         return move
+
+    def tap(self, t):
+        """The player says a move is done (like pressing a chess clock): read the board now."""
+        if self.pending is None:
+            self.tap_at = t
 
     def set_timing(self, stable_seconds, confirm_seconds):
         self.s["stable_seconds"], self.s["confirm_seconds"] = stable_seconds, confirm_seconds

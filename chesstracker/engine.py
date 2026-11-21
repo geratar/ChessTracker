@@ -29,7 +29,8 @@ THEMES = {
     "green": {"square light": "#ebecd0", "square dark": "#779556",
               "square light lastmove": "#f5f682", "square dark lastmove": "#b9ca43"},
 }
-SETTINGS_DEFAULTS = {"theme": "green", "flipped": False, "speed": "normal"}
+SETTINGS_DEFAULTS = {"theme": "green", "flipped": False, "speed": "normal", "detect": "auto"}
+DETECT_MODES = ("auto", "tap")
 # How long the squares of a move must be still before it is read (seconds).
 SPEEDS = {"fast": {"stable_seconds": 0.25, "confirm_seconds": 0.2},
           "normal": {"stable_seconds": 0.4, "confirm_seconds": 0.3},
@@ -74,6 +75,8 @@ class Engine:
         except (FileNotFoundError, ValueError):
             pass
         self.mode = "setup"            # setup | tracking
+        self.clock = {"white": 0.0, "black": 0.0}   # thinking time per side (seconds)
+        self._clock_t = None
         self.tracker = None
         self.status = "Choose your camera"
         self.status_kind = "info"
@@ -161,6 +164,8 @@ class Engine:
             self.tracker = Tracker(cal, self._tracker_settings(), board)
             self.saved_plies = 0
             self.tracker.debug = self._debug
+            self.clock = {"white": 0.0, "black": 0.0}
+            self._clock_t = time.monotonic()
             self._debug(f"--- start tracking fen={board.fen()} corners={cal.corners} rot={cal.rotation} "
                         f"frame={self.frame_size}")
             self.mode = "tracking"
@@ -275,10 +280,17 @@ class Engine:
         self.settings_path.write_text(json.dumps(self.settings, indent=2))
 
     def _tracker_settings(self):
-        return {**self.cfg, **SPEEDS.get(self.settings.get("speed"), SPEEDS["normal"])}
+        return {**self.cfg, **SPEEDS.get(self.settings.get("speed"), SPEEDS["normal"]),
+                "detect": self.settings.get("detect", "auto")}
 
-    def update_settings(self, theme=None, flipped=None, speed=None):
+    def update_settings(self, theme=None, flipped=None, speed=None, detect=None):
         with self.lock:
+            if detect is not None:
+                if detect not in DETECT_MODES:
+                    raise ValueError(f"Unknown mode {detect}")
+                self._save_settings(detect=detect)
+                if self.tracker:
+                    self.tracker.s["detect"] = detect
             if speed is not None:
                 if speed not in SPEEDS:
                     raise ValueError(f"Unknown speed {speed}")
@@ -399,10 +411,18 @@ class Engine:
                 "still": bool(t and t.is_still(time.monotonic())),
                 "settings": self.settings,
                 "recording": self.writer is not None,
+                "clock": self._clock_state(),
                 "unsaved": bool(t and len(t.board.move_stack) > self.saved_plies),
                 "outcome": board.result() if board.is_game_over() else "*",
                 "themes": list(THEMES),
             }
+
+    def _clock_state(self):
+        self._tick()
+        t = self.tracker
+        return {**{k: round(v, 1) for k, v in self.clock.items()},
+                "turn": ("white" if t.board.turn == chess.WHITE else "black") if t else None,
+                "reading": bool(t and t.tap_at is not None)}
 
     @staticmethod
     def _san_list(board):
@@ -440,6 +460,7 @@ class Engine:
                     self.writer.write(frame)
                     self._rec_next = max(self._rec_next + 1 / 15, now - 0.2)
                 if self.mode == "tracking" and self.tracker:
+                    self._tick()
                     for ev in self.tracker.process(frame, now):
                         self._on_event(ev)
                 cal = self.calibration()
@@ -456,6 +477,24 @@ class Engine:
                 time.sleep(max(0.0, 1 / 15 - (time.monotonic() - now)))
             else:
                 time.sleep(0.01)
+
+    def tap(self):
+        """'Move done' (Space / big button): read the board now, like pressing a chess clock."""
+        with self.lock:
+            if not self.tracker:
+                raise ValueError("Not tracking")
+            self._tick()
+            self.tracker.tap(time.monotonic())
+            self._set_status("Reading the move...", "info")
+
+    def _tick(self):
+        if self.tracker is None or self._clock_t is None:
+            return
+        now = time.monotonic()
+        side = "white" if self.tracker.board.turn == chess.WHITE else "black"
+        if not self.tracker.board.is_game_over():
+            self.clock[side] += now - self._clock_t
+        self._clock_t = now
 
     def _on_event(self, ev):
         self._debug(f"event {ev.kind}: {ev.text}")

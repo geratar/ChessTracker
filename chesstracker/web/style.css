@@ -87,3 +87,9 @@ footer { color:#6e6c69; font-size:11px; padding:10px 20px; }
 .banner { background:#2f4f2a; color:#fff; padding:8px 16px; display:flex; gap:12px; align-items:center; justify-content:center; }
 .speeds { display:flex; gap:8px; margin-bottom:6px; }
 .speeds button.sel { outline:2px solid var(--accent); }
+.clock { display:flex; gap:10px; align-items:stretch; margin:10px 0 4px; }
+.clock > div { flex:1; background:#2b2926; border-radius:8px; padding:6px 12px; display:flex; justify-content:space-between; align-items:center; opacity:.6; }
+.clock > div.active { opacity:1; outline:2px solid var(--accent); }
+.clock b { font-size:22px; font-variant-numeric:tabular-nums; }
+.clock #tapBtn { flex:1.2; font-size:17px; }
+.clock #tapBtn small { opacity:.7; font-size:11px; margin-left:6px; }

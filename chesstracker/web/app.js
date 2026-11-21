@@ -119,6 +119,15 @@ function renderPlay() {
   $("newBtn").classList.toggle("hidden", playing);    // only after the game is finished
   $("recBtn").textContent = S.recording ? "⏹ Stop recording" : "⏺ Record video";
   $("recBtn").classList.toggle("danger", S.recording);
+  $("clock").classList.toggle("hidden", !playing);
+  if (playing && S.clock) {
+    const fmt = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
+    $("clockWhite").querySelector("b").textContent = fmt(S.clock.white);
+    $("clockBlack").querySelector("b").textContent = fmt(S.clock.black);
+    $("clockWhite").classList.toggle("active", S.clock.turn === "white");
+    $("clockBlack").classList.toggle("active", S.clock.turn === "black");
+    $("tapBtn").disabled = S.clock.reading;
+  }
   const b = $("stillBadge");
   b.textContent = !S.camera.connected ? "Camera disconnected" : (S.mode !== "tracking" ? "" : (S.still ? "● board still" : "● movement"));
   b.style.color = S.still ? "#81b64c" : "#e6a23c";
@@ -162,6 +171,15 @@ $("recBtn").onclick = async () => {
 $("newBtn").onclick = () => guardUnsaved("Start a new game? Save this one first?", async () => {
   if (!S.calibration.saved) { showTab("setup", true); return; }
   await post("/api/new_game");
+});
+// "Move done": like pressing a chess clock
+async function tap() { if (S && S.mode === "tracking" && !S.pending.length) { try { await post("/api/tap"); } catch (e) {} } }
+$("tapBtn").onclick = (e) => { e.currentTarget.blur(); tap(); };
+document.addEventListener("keydown", (e) => {
+  if (e.code !== "Space" || e.repeat || document.querySelector("dialog[open]")) return;
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) return;
+  if (!S || S.mode !== "tracking") return;
+  e.preventDefault(); tap();
 });
 $("flipBtn").onclick = () => post("/api/settings", { flipped: !S.settings.flipped });
 let afterSave = null, finishing = false;
@@ -235,6 +253,11 @@ $("settingsBtn").onclick = () => {
     box.appendChild(b);
   });
   $("flipSetting").checked = S.settings.flipped;
+  document.querySelectorAll("#detectModes button").forEach(b => {
+    b.classList.toggle("sel", b.dataset.detect === (S.settings.detect || "auto"));
+    b.onclick = async () => { await post("/api/settings", { detect: b.dataset.detect });
+      document.querySelectorAll("#detectModes button").forEach(x => x.classList.toggle("sel", x === b)); };
+  });
   document.querySelectorAll("#speeds button").forEach(b => {
     b.classList.toggle("sel", b.dataset.speed === (S.settings.speed || "normal"));
     b.onclick = async () => { await post("/api/settings", { speed: b.dataset.speed });

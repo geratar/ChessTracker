@@ -19,7 +19,8 @@ No neural nets, paid APIs, databases or frameworks unless simpler methods demons
 - `chesstracker/detector.py`: frame alignment (phase correlation), motion gate, per-square change scores (L + edges)
 - Camera asks for 1080p; engine rescales corners if the resolution changes. Tracker decides on the mean of agreeing still frames
 - `chesstracker/tracker.py`: state machine: per-square still -> consistent changes -> match_move -> apply / ask / report; undo.
-  Partial view (hand on board): accept only certain moves away from the hand, never ask
+  Partial view (hand on board): accept only certain moves away from the hand, never ask.
+  `tap()` (Space / Move done): read at once; `detect: tap` reads only on taps
 - `chesstracker/board_view.py`: 2D board drawing
 - `app.py` + `chesstracker/engine.py` + `chesstracker/web/`: main app. Local HTTP server (stdlib), browser UI
   (wizard, play, library, settings), MJPEG camera streams, board SVG via chess.svg (cburnett pieces).

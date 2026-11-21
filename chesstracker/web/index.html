@@ -95,6 +95,11 @@
           <img id="boardImg" alt="board">
           <div class="grid" id="boardGrid"></div>
         </div>
+        <div class="clock hidden" id="clock">
+          <div id="clockWhite"><span>White</span><b>0:00</b></div>
+          <button id="tapBtn" class="primary" title="Press after each move (or the Space key)">✓ Move done <small>Space</small></button>
+          <div id="clockBlack"><span>Black</span><b>0:00</b></div>
+        </div>
         <div class="status" id="status">Not tracking yet. Use Setup to start.</div>
         <div class="ask hidden" id="ask"></div>
       </div>
@@ -162,6 +167,11 @@
     <button data-speed="fast">Fast</button><button data-speed="normal">Normal</button><button data-speed="careful">Careful</button>
   </div>
   <p class="hint">Fast reads a move about 0.5 s after your hand leaves those squares. Careful waits about 1.2 s.</p>
+  <div class="speeds" id="detectModes">
+    <button data-detect="auto">Automatic</button><button data-detect="tap">Only when I tap</button>
+  </div>
+  <p class="hint">You can always press Space (or ✓ Move done) after a move, like a chess clock, to have it read
+    right away. "Only when I tap" ignores the board until you do: best for fast games.</p>
   <p>Updates</p>
   <p class="hint" id="updateInfo">Not checked yet.</p>
   <div class="row"><button id="checkUpdate" class="ghost">Check for updates</button>

@@ -106,6 +106,13 @@
   moves that fit, and at most 2 moves while a hand is on the board.
 - Clip added (cropped, 2 MB) as fixtures/fast_play: test asserts nothing wrong is ever applied. 73 tests.
 
+## Tap mode + clock (13:10)
+- User chose "both": Settings > Move detection: Automatic / Only when I tap. Space or the big
+  "Move done" button (any mode) reads the board as soon as nothing moves on it for 2 frames
+  (max 1.5 s; moving squares left out). A tap means a move happened, so if nothing fits clearly
+  the best candidates are offered. Clock under the board shows each side's thinking time.
+- 77 tests pass.
+
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,

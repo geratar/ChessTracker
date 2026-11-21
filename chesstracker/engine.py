@@ -29,10 +29,10 @@ THEMES = {
     "green": {"square light": "#ebecd0", "square dark": "#779556",
               "square light lastmove": "#f5f682", "square dark lastmove": "#b9ca43"},
 }
-SETTINGS_DEFAULTS = {"theme": "green", "flipped": False, "speed": "normal", "detect": "auto"}
+SETTINGS_DEFAULTS = {"theme": "green", "flipped": False, "speed": "fast", "detect": "auto"}
 DETECT_MODES = ("auto", "tap")
 # How long the squares of a move must be still before it is read (seconds).
-SPEEDS = {"fast": {"stable_seconds": 0.25, "confirm_seconds": 0.2},
+SPEEDS = {"fast": {"stable_seconds": 0.13, "confirm_seconds": 0.0},   # 2 frames: blitz
           "normal": {"stable_seconds": 0.4, "confirm_seconds": 0.3},
           "careful": {"stable_seconds": 0.7, "confirm_seconds": 0.5}}
 
@@ -484,6 +484,7 @@ class Engine:
             if not self.tracker:
                 raise ValueError("Not tracking")
             self._tick()
+            self._debug("tap")
             self.tracker.tap(time.monotonic())
             self._set_status("Reading the move...", "info")
 

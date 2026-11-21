@@ -17,8 +17,8 @@ from .moves import (ACCEPT, AMBIGUOUS, NO_MOVE, PROMOTION, TWO_MOVES, MatchResul
 
 TRACKER_DEFAULTS = {
     "motion_threshold": 2.0,       # per-square mean abs diff (top-down board); ~0.3 still, >10 with a hand
-    "stable_seconds": 0.4,         # a square (and its neighbours) must be still this long before we look
-    "confirm_seconds": 0.3,        # the same changed squares must persist this long after that
+    "stable_seconds": 0.13,        # a square (and its neighbours) must be still this long (2 frames) before we look
+    "confirm_seconds": 0.0,        # the same changed squares must persist this long after that
     "max_moving_squares": 40,      # more of the board moving than this => wait for everything
     "max_changed_squares": 8,      # more than this => hand, shadow or bumped board: wait
     "absorb_seconds": 3.0,         # unchanged board for this long => refresh reference (lighting drift)
@@ -30,7 +30,8 @@ TRACKER_DEFAULTS = {
     "piece_height": 1.6,           # tallest piece height in square widths (0 = ignore camera geometry)
     "average_frames": 5,
     "detect": "auto",              # auto: read moves by itself | tap: only when the player taps
-    "tap_max_wait": 1.5,           # after a tap, wait at most this long for hands to leave           # average this many still frames to cut camera noise (1 = off)
+    "tap_max_wait": 1.5,           # after a tap, wait at most this long for hands to leave
+    "retract_seconds": 1.0,        # a move whose squares look like before again within this time was a hand           # average this many still frames to cut camera noise (1 = off)
 }
 
 
@@ -56,6 +57,9 @@ class Tracker:
         self.unsettled = set()         # squares a hand is over (or next to) right now
         self._partial_key = None       # hand position we last judged a partial view for
         self.tap_at = None             # time of a "move done" tap not handled yet
+        self.provisional = None        # (t, n_moves, squares, ref before) of the last automatic read
+        self.stale = set()             # squares whose reference predates a hand that covered them
+        self.last_strengths = {}
         self._quiet = 0                # consecutive frames with nothing moving on the board
         self.ref_feats = None          # board image of the last confirmed position
         self.ref_history = []          # earlier reference images, for undo
@@ -108,6 +112,8 @@ class Tracker:
 
         feats = square_features(warped)
         self.last_feats = feats
+        if self.provisional and self._retracted(feats, unsettled, t, events):
+            return events
         if self.ref_feats is None:
             self.ref_feats = feats
             events.append(Event("ready", t, "Reference position captured"))
@@ -156,11 +162,24 @@ class Tracker:
                                 "(several moves missed, or the board was bumped). Add the missed moves with "
                                 "'Enter a move' and tracking continues from there.",
                                 squares=set(changed)))
+        if changed and changed <= self.stale:
+            # Only squares whose reference is from before a hand covered them changed. Light and
+            # camera drift since then can look like a weak move: demand a clear one, else refresh.
+            result = match_move(self.board, changed, shadows=self.shadows, strengths=self.last_strengths,
+                                rel_margin=self.s["rel_margin"], allow_two=False)
+            exp = expected_changes(self.board, result.move) if result.status == ACCEPT else set()
+            st = [self.last_strengths.get(q, 0.0) for q in exp]
+            if not st or min(st) < 1.0 or max(st) < 2.0:
+                self.ref_feats = self._patched_from(feats, changed)
+                self.stale -= changed
+                return events
+        self.stale -= {q for q in self.stale if self.last_strengths.get(q, 0.0) < 1.0}
         result = match_move(self.board, changed, shadows=self.shadows, strengths=self.last_strengths,
                             rel_margin=self.s["rel_margin"])
         if result.status == ACCEPT:
             seq = result.candidates[0].moves if result.candidates and result.candidates[0].move == result.move else [result.move]
-            events.append(self._apply(seq, feats, t))
+            self.stale = set()             # whole board seen fresh
+            events.append(self._apply(seq, feats, t, auto=True))
         elif result.status in (AMBIGUOUS, PROMOTION, TWO_MOVES):
             self.pending = result
             kind = {AMBIGUOUS: "ambiguous", PROMOTION: "promotion", TWO_MOVES: "two_moves"}[result.status]
@@ -178,7 +197,8 @@ class Tracker:
             else:
                 self._report(events, Event("unrecognized", t,
                              f"{chess.square_name(sq)} changed but no legal move uses it", squares=set(changed)))
-        elif len(changed) <= 1:
+        elif len(changed) <= 1 or self._all_weak(changed):
+            # faint changes no move explains: light or camera drift, not worth a warning
             self.unchanged_since = self.unchanged_since or t
         else:
             self._report(events, Event("unrecognized", t,
@@ -263,8 +283,9 @@ class Tracker:
                     return events
         # New reference: the current picture, except under the hand (keep the old one there).
         ref = self._patched(feats, unsettled)
+        self.stale |= unsettled
         self.last_feats = ref
-        events.append(self._apply(seq, ref, t))
+        events.append(self._apply(seq, ref, t, auto=True))
         self.last_changed, self.evaluated = None, False
         return events
 
@@ -275,6 +296,16 @@ class Tracker:
             r, c = 7 - chess.square_rank(q), chess.square_file(q)
             for new, old in zip(out, self.ref_feats):
                 new[r * s:(r + 1) * s, c * s:(c + 1) * s] = old[r * s:(r + 1) * s, c * s:(c + 1) * s]
+        return out
+
+    def _patched_from(self, feats, squares):
+        """Reference with `squares` taken from `feats` (the rest unchanged)."""
+        s = feats[0].shape[0] // 8
+        out = tuple(a.copy() for a in self.ref_feats)
+        for q in squares:
+            r, c = 7 - chess.square_rank(q), chess.square_file(q)
+            for new, cur in zip(out, feats):
+                new[r * s:(r + 1) * s, c * s:(c + 1) * s] = cur[r * s:(r + 1) * s, c * s:(c + 1) * s]
         return out
 
     def _log_eval(self, t, changed, scores, unsettled=()):
@@ -363,7 +394,9 @@ class Tracker:
             self._avg, self._avg_shift = deque(maxlen=n), shift
         self._avg.append(warped.astype(np.float32))
 
-    def _apply(self, moves, feats, t):
+    def _apply(self, moves, feats, t, auto=False):
+        before = self.board.copy(stack=False)
+        self.provisional = (t, len(moves), expected_changes(before, *moves), self.ref_feats) if auto else None
         sans = []
         for m in moves:
             sans.append(self.board.san(m))
@@ -373,6 +406,32 @@ class Tracker:
         self.reported = None
         self.unchanged_since = None
         return Event("move", t, " ".join(sans), move=moves[-1])
+
+    def _retracted(self, feats, unsettled, t, events):
+        """Fast reads can mistake a hand that paused for a move. If the squares of the last
+        automatic read look like before again shortly after, it was a hand: take it back."""
+        t0, n, squares, old_ref = self.provisional
+        if t - t0 > self.s["retract_seconds"] or len(self.board.move_stack) < n:
+            self.provisional = None
+            return False
+        if squares & unsettled:
+            return False
+        scores = change_scores(old_ref, feats)
+        bar = self.s["min_change_score"]
+        if all(scores[7 - chess.square_rank(q), chess.square_file(q)] < 0.5 * bar for q in squares):
+            sans = []
+            for _ in range(n):
+                sans.insert(0, self.board.peek())
+                self.undo()
+            b = self.board.copy(stack=False)
+            self.provisional = None
+            events.append(Event("retracted", t, "Took back " + " ".join(m.uci() for m in sans) +
+                                ": that was a hand over the board, not a move."))
+            return True
+        return False
+
+    def _all_weak(self, changed):
+        return all(self.last_strengths.get(q, 0.0) < 2.0 for q in changed)
 
     def _strong(self, changed):
         if self.last_scores is None:
@@ -389,7 +448,8 @@ class Tracker:
 
     def _maybe_absorb(self, changed, feats, t, events):
         """Slowly follow lighting drift and nudged pieces while nothing meaningful changed."""
-        if len(changed) == 0 or (len(changed) == 1 and not self._strong(changed)):
+        if len(changed) == 0 or (len(changed) == 1 and not self._strong(changed)) or \
+                (self.evaluated and self._all_weak(changed)):
             self.unchanged_since = self.unchanged_since or t
             if t - self.unchanged_since >= self.s["absorb_seconds"]:
                 self.ref_feats = feats

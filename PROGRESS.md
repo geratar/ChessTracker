@@ -113,6 +113,15 @@
   the best candidates are offered. Clock under the board shows each side's thinking time.
 - 77 tests pass.
 
+## Blitz recording 5 (13:25)
+- Board clear for only ~0.3 s between moves; we needed 0.4 s still + 0.3 s confirm, so nothing was read.
+- Now a square counts as still after 2 frames (0.13 s), no extra confirm (Fast = default).
+  Guards: a read whose squares look like before within 1 s is taken back ("was a hand");
+  squares whose reference predates a hand only produce a move on clear evidence, else refresh;
+  faint unexplained changes are absorbed instead of warned about.
+- Blitz clip: 1. e4 d5 2. exd5 Qxd5 3. Nc3 Qa5 4. d4 c6 5. Bd2, all read, no questions (fixtures/blitz).
+  Older clips unchanged; no wrong moves on any clip. 78 tests.
+
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,

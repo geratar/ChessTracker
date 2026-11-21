@@ -97,6 +97,15 @@
 - UI: Finish game with no moves; "Finish without saving"; app renamed ChessEmeg (display name only;
   repo, folder and launcher file names unchanged so the updater keeps working). 72 tests pass.
 
+## Recording 4 (12:45): camera higher, solo fast play, "tracked nothing"
+- Not a regression: the previous version also read nothing on this clip. Moves were played every
+  1-2 s by one person; the first clear view came after 4 moves (e4 d5 exd5 Qxd5).
+- Found and fixed a real risk: catch-up could accept e4 d5 exd5 while Qxd5 had also been played
+  (the queen's departure showed on c8 because pieces lean in the camera view). Catch-up now needs a
+  complete explanation (every expected square changed, no strong unexplained change), the fewest
+  moves that fit, and at most 2 moves while a hand is on the board.
+- Clip added (cropped, 2 MB) as fixtures/fast_play: test asserts nothing wrong is ever applied. 73 tests.
+
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,

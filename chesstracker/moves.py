@@ -126,15 +126,23 @@ def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, mi
         if allow_two and len(changed) >= 3:
             seqs = _match_sequences(board, changed, score, min_score, max_plies)
             if seqs and strengths is not None:
-                seqs.sort(key=lambda c: c.weight, reverse=True)
-                best = seqs[0]
-                clear = (len(seqs) == 1 or best.weight - seqs[1].weight >= seq_margin * best.weight)
-                exp = expected_changes(board, *best.moves)
-                weak = [q for q in exp if strengths.get(q, 0.0) < 0.5]   # expected but barely changed
-                if (clear and best.weight > 0 and not weak and best.extra <= 1
-                        and not any(m.promotion for m in best.moves)):
-                    # Fast play: several moves happened between two still moments. Catch up.
-                    return MatchResult(ACCEPT, move=best.move, candidates=seqs[:max_candidates])
+                def complete(c):
+                    # every expected square changed clearly, every strong change is explained
+                    # (or sits right next to an explained square: tall pieces lean over)
+                    exp = expected_changes(board, *c.moves)
+                    if any(strengths.get(q, 0.0) < 0.5 for q in exp):
+                        return False
+                    return all(_near(q, exp) and strengths.get(q, 0.0) < 1.5 for q in changed - exp)
+                full = [c for c in seqs if complete(c) and not any(m.promotion for m in c.moves)]
+                if full:   # the fewest moves that fully explain the changes (e4 d5, not e3 d5 e4)
+                    n = min(len(c.moves) for c in full)
+                    full = [c for c in full if len(c.moves) == n]
+                full.sort(key=lambda c: c.weight, reverse=True)
+                if full and full[0].weight > 0 and (
+                        len(full) == 1 or full[0].weight - full[1].weight >= seq_margin * full[0].weight):
+                    # Fast play: several moves happened between two clear views. Catch up.
+                    best = full[0]
+                    return MatchResult(ACCEPT, move=best.move, candidates=[best] + [c for c in seqs if c is not best][:max_candidates - 1])
             if seqs:
                 return MatchResult(TWO_MOVES, candidates=seqs[:max_candidates])
         return MatchResult(NO_MOVE, candidates=ranked)
@@ -186,7 +194,8 @@ def _match_sequences(board, changed, score, min_score, max_plies=3, limit=4000):
     """Moves were missed (fast play): find 2..max_plies consecutive legal moves that
     explain the changes. Every move must touch a changed square (keeps it fast and
     rules out pieces that moved and came back). Shorter sequences are preferred:
-    longer ones are only tried when no shorter one fits."""
+    longer ones pay a small penalty so they only win when they explain clearly more."""
+    all_out = []
     for plies in range(2, max_plies + 1):
         out, seen, tried = [], set(), 0
         stack = [(board.copy(stack=False), [])]
@@ -211,10 +220,9 @@ def _match_sequences(board, changed, score, min_score, max_plies=3, limit=4000):
                     if key not in seen:
                         seen.add(key)
                         out.append(c)
-        if out:
-            out.sort(key=lambda c: c.score, reverse=True)
-            return out
-    return []
+        all_out.extend(out)
+    all_out.sort(key=lambda c: (c.score - 0.5 * (len(c.moves) - 2)), reverse=True)
+    return all_out
 
 
 def candidates_for_square(board, square, max_candidates=5):

@@ -189,17 +189,18 @@ class Tracker:
         if len(changed) < 2 or len(changed) > self.s["max_changed_squares"]:
             return events
         result = match_move(self.board, changed, shadows=self.shadows, strengths=self.last_strengths,
-                            rel_margin=self.s["rel_margin"], allow_two=False)
+                            rel_margin=self.s["rel_margin"], allow_two=len(unsettled) <= 16, max_plies=2)
         if result.status != ACCEPT:
             return events
         move = result.move
-        expected = expected_changes(self.board, move)
+        seq = result.candidates[0].moves if result.candidates and result.candidates[0].move == move else [move]
+        expected = expected_changes(self.board, *seq)
         if expected & unsettled:
             return events
         near = {q for e in expected for q in chess.SQUARES if chess.square_distance(q, e) <= 1}
         if not changed <= near:                       # something else changed too: maybe a second move
             return events
-        for alt in self.board.legal_moves:
+        for alt in (self.board.legal_moves if len(seq) == 1 else []):
             if alt != move:
                 e2 = expected_changes(self.board, alt)
                 if e2 & unsettled and changed <= e2 | {q for e in e2 for q in chess.SQUARES
@@ -208,7 +209,7 @@ class Tracker:
         # New reference: the current picture, except under the hand (keep the old one there).
         ref = self._patched(feats, unsettled)
         self.last_feats = ref
-        events.append(self._apply([move], ref, t))
+        events.append(self._apply(seq, ref, t))
         self.last_changed, self.evaluated = None, False
         return events
 

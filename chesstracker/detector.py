@@ -130,13 +130,14 @@ class SquareMotion:
     over one corner of the board doesn't stop a move elsewhere from being read.
     """
 
-    def __init__(self, threshold=2.0, stable_seconds=0.4, noise_factor=4.0, history=300, size=160):
+    def __init__(self, threshold=2.0, stable_seconds=0.4, noise_factor=4.0, history=300, size=160, grow=1):
         self.base_threshold = threshold
         self.threshold = threshold
         self.stable_seconds = stable_seconds
         self.noise_factor = noise_factor
         self.history = deque(maxlen=history)
         self.size = size
+        self.grow = grow               # also treat this many neighbouring squares as moving
         self.prev = None
         self.still_since = np.full((8, 8), np.nan)
         self.motion = np.zeros((8, 8))
@@ -155,7 +156,10 @@ class SquareMotion:
         if len(self.history) >= 15:
             floor = float(np.percentile(self.history, 20))
             self.threshold = max(self.base_threshold, self.noise_factor * floor)
-        moving = cv2.dilate((self.motion > self.threshold).astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+        moving = self.motion > self.threshold
+        if self.grow:
+            k = 2 * self.grow + 1
+            moving = cv2.dilate(moving.astype(np.uint8), np.ones((k, k), np.uint8)) > 0
         self.still_since[moving] = np.nan
         self.still_since[~moving & np.isnan(self.still_since)] = t
 

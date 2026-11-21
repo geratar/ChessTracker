@@ -53,6 +53,15 @@
   Download path untested from a Mac (sandbox blocks GitHub downloads); asset selection unit-tested.
 - 57 tests pass.
 
+## Mac recording 2 (11:09): side camera, pieces lean onto the next file
+- e2-e4 lit up d2/d4 as much as e2/e4 -> "Please confirm e4, d4, e3". Root cause: the matcher counted
+  changed squares but ignored how strongly each changed.
+- Now candidates are ranked by how much of the measured change they explain (strength-weighted,
+  shadow-zone aware; changes outside a move's hidden zone cost almost full price). Accept when the
+  best explains >= 20% more than the runner-up (`rel_margin`).
+- Recording 2: all 8 moves (e4 e5 Nf3 d5 exd5 Qxd5 d4 exd4) found with zero questions; recording 1
+  unchanged. Added as fixtures/game2 regression test. 62 tests pass.
+
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,

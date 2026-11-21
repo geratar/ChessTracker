@@ -144,3 +144,36 @@ def test_geometry_does_not_invent_moves_from_shadow_only():
     # only shadow squares changed (e.g. a hand's shadow): still no move
     r = match_move(chess.Board(), _SHADOWS[S("e4")], shadows=_SHADOWS)
     assert r.status != "accept"
+
+
+# --- real numbers from the user's debug.log (second setup) -----------------
+_SH2 = _Cal.load(_P(__file__).parent / "fixtures" / "game2" / "calibration.json").shadow_map()
+
+
+def _st(bar, **scores):
+    st = {q: 3.5 / bar for q in chess.SQUARES}          # median noise
+    st.update({S(k): v / bar for k, v in scores.items()})
+    return st
+
+
+def test_log_e4_with_neighbour_file_lit_up():
+    changed = sqs("d2", "e2", "d4", "e4")
+    r = match_move(chess.Board(), changed, shadows=_SH2, strengths=_st(18.4, e4=46, e2=36, d4=32, d2=32))
+    assert r.status == "accept" and chess.Board().san(r.move) == "e4"
+
+
+def test_log_black_e5():
+    b = chess.Board()
+    b.push_san("e4")
+    r = match_move(b, sqs("d5", "e5", "d7", "e7"), shadows=_SH2,
+                   strengths=_st(18.0, d5=33, e5=32, d7=31, e7=25))
+    assert r.status == "accept" and b.san(r.move) == "e5"
+
+
+def test_log_exd4_not_qxd4():
+    b = chess.Board()
+    for m in ("e4", "e5", "Nf3", "d5", "exd5", "Qxd5", "d4"):
+        b.push_san(m)
+    r = match_move(b, sqs("c4", "d4", "d5", "e5"), shadows=_SH2,
+                   strengths=_st(23.2, d4=58, c4=38, d5=33, e5=31))
+    assert r.status == "accept" and b.san(r.move) == "exd4"

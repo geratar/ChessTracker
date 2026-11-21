@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 import chess
 import numpy as np
 
-from .detector import Aligner, MotionGate, change_scores, changed_squares, square_features
+from .detector import SQUARE_NAMES, Aligner, MotionGate, change_scores, changed_squares, square_features
 from .moves import ACCEPT, AMBIGUOUS, PROMOTION, TWO_MOVES, MatchResult, candidates_for_square, match_move
 
 TRACKER_DEFAULTS = {
@@ -22,8 +22,9 @@ TRACKER_DEFAULTS = {
     "min_change_score": 18.0,
     "median_factor": 3.0,
     "rel_to_max": 0.4,
-    "strong_single_factor": 2.0,
-    "piece_height": 1.6,           # tallest piece height in square widths (0 = ignore camera geometry)   # one square changed this strongly => probably a move, ask
+    "strong_single_factor": 2.0,   # one square changed this strongly => probably a move, ask
+    "rel_margin": 0.2,             # best move must explain this much more of the change than the next
+    "piece_height": 1.6,           # tallest piece height in square widths (0 = ignore camera geometry)
 }
 
 
@@ -84,8 +85,10 @@ class Tracker:
 
         scores = change_scores(self.ref_feats, feats)
         self.last_scores = scores
-        changed = changed_squares(scores, self.s["min_change_score"], self.s["median_factor"],
-                                  self.s["rel_to_max"])
+        changed, bar = changed_squares(scores, self.s["min_change_score"], self.s["median_factor"],
+                                       self.s["rel_to_max"], return_bar=True)
+        self.last_strengths = {chess.parse_square(SQUARE_NAMES[i]): float(v) / bar
+                               for i, v in enumerate(scores.ravel())}
         changed = frozenset(chess.parse_square(n) for n in changed)
 
         if changed != self.last_changed:
@@ -106,7 +109,8 @@ class Tracker:
             return self._report(events, Event("obstructed", t,
                                 f"{len(changed)} squares changed: hand, shadow or moved board? Waiting.",
                                 squares=set(changed)))
-        result = match_move(self.board, changed, shadows=self.shadows)
+        result = match_move(self.board, changed, shadows=self.shadows, strengths=self.last_strengths,
+                            rel_margin=self.s["rel_margin"])
         if result.status == ACCEPT:
             events.append(self._apply([result.move], feats, t))
         elif result.status in (AMBIGUOUS, PROMOTION, TWO_MOVES):

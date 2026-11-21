@@ -134,8 +134,9 @@ def change_scores(feat_a, feat_b, inner=0.8):
     return d[:s * 8, :s * 8].reshape(8, s, 8, s)[:, m:s - m, :, m:s - m].mean(axis=(1, 3))
 
 
-def changed_squares(scores, min_score=25.0, median_factor=3.0, rel_to_max=0.4):
+def changed_squares(scores, min_score=25.0, median_factor=3.0, rel_to_max=0.4, return_bar=False):
     """Squares whose score clears an absolute, a noise-relative and a max-relative bar."""
     flat = scores.ravel()
     bar = max(min_score, median_factor * float(np.median(flat)), rel_to_max * float(flat.max()))
-    return {SQUARE_NAMES[i] for i in np.nonzero(flat >= bar)[0]}
+    names = {SQUARE_NAMES[i] for i in np.nonzero(flat >= bar)[0]}
+    return (names, bar) if return_bar else names

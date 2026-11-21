@@ -180,38 +180,58 @@ $("newBtn").onclick = () => guardUnsaved("Start a new game? Save this one first?
 });
 
 // ---------------- players ----------------
-let playerList = [], avatarCount = 20, pick = { white: null, black: null }, newAvatar = 0, playersThen = null;
+// pick.white / pick.black: "anon" or a player id. Each side is a dropdown with a search box.
+let playerList = [], avatarCount = 20, pick = { white: "anon", black: "anon" }, newAvatar = 0, playersThen = null;
 const avatarImg = (n) => n === null || n === undefined ? "" : `<img class="av" src="/api/avatar/${n}.svg" alt="">`;
 const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const ANON_HTML = `<span class="av anon">?</span><span>Anonymous</span>`;
+const pickEl = (side) => $(side === "white" ? "pickWhite" : "pickBlack");
 async function choosePlayers(then) {
   const r = await api("/api/players"); playerList = r.players; avatarCount = r.avatars;
-  let last = {}; try { last = JSON.parse(localStorage.getItem("lastPlayers") || "{}"); } catch (e) { }
-  const exists = (id) => id === "anon" || playerList.some(p => p.id === id) ? id : null;
-  pick = { white: exists(last.white), black: exists(last.black) };
-  playersThen = then; renderPick(); showNewPlayer(!playerList.length);
+  pick = { white: "anon", black: "anon" };
+  playersThen = then;
+  ["white", "black"].forEach(buildPicker);
   $("playersDlg").showModal();
 }
-function renderPick() {
-  ["white", "black"].forEach(side => {
-    const other = side === "white" ? "black" : "white", el = $(side === "white" ? "pickWhite" : "pickBlack");
-    el.innerHTML = "";
-    const anon = document.createElement("button");      // can be picked for both sides
-    anon.className = pick[side] === "anon" ? "sel" : "";
-    anon.innerHTML = `<span class="av anon">?</span><span>Anonymous</span>`;
-    anon.onclick = () => { pick[side] = pick[side] === "anon" ? null : "anon"; renderPick(); };
-    el.appendChild(anon);
-    playerList.forEach(p => {
-      const b = document.createElement("button");
-      b.className = pick[side] === p.id ? "sel" : ""; b.disabled = pick[other] === p.id;
-      b.innerHTML = `${avatarImg(p.avatar)}<span>${esc(p.name)}</span>`;
-      b.onclick = () => { pick[side] = pick[side] === p.id ? null : p.id; renderPick(); };
-      el.appendChild(b);
-    });
-  });
+function playerHtml(id) {
+  const p = playerList.find(x => x.id === id);
+  return p ? `${avatarImg(p.avatar)}<span>${esc(p.name)}</span>` : ANON_HTML;
 }
-function showNewPlayer(on) {
-  $("newPlayer").classList.toggle("hidden", !on); $("newPlayerBtn").classList.toggle("hidden", on);
-  if (!on) return;
+function buildPicker(side) {
+  const el = pickEl(side);
+  el.innerHTML = `<button class="chosen"></button><div class="drop hidden"><input placeholder="Search players..."><div class="plist"></div></div>`;
+  const chosen = el.querySelector(".chosen"), drop = el.querySelector(".drop"), input = el.querySelector("input");
+  chosen.innerHTML = playerHtml(pick[side]) + '<span class="caret">▾</span>';
+  chosen.onclick = () => {
+    const open = drop.classList.contains("hidden");
+    closePickers();
+    if (open) { drop.classList.remove("hidden"); input.value = ""; fillList(side); input.focus(); }
+  };
+  input.oninput = () => fillList(side);
+  input.onkeydown = (e) => {
+    if (e.key === "Enter") { const first = drop.querySelector(".plist button"); if (first) first.click(); e.preventDefault(); }
+    if (e.key === "Escape") { closePickers(); e.preventDefault(); e.stopPropagation(); }
+  };
+}
+function closePickers() { document.querySelectorAll("#playersDlg .drop").forEach(d => d.classList.add("hidden")); }
+function fillList(side) {
+  const el = pickEl(side), list = el.querySelector(".plist"), text = el.querySelector("input").value.trim();
+  const other = side === "white" ? "black" : "white", needle = text.toLowerCase();
+  list.innerHTML = "";
+  const add = (html, cls, onclick, disabled) => {
+    const b = document.createElement("button"); b.className = cls || ""; b.innerHTML = html; b.disabled = !!disabled;
+    b.onclick = onclick; list.appendChild(b);
+  };
+  const choose = (id) => { pick[side] = id; closePickers(); buildPicker(side); };
+  if (!needle || "anonymous".includes(needle)) add(ANON_HTML, pick[side] === "anon" ? "sel" : "", () => choose("anon"));
+  playerList.filter(p => p.name.toLowerCase().includes(needle))
+    .sort((x, y) => x.name.localeCompare(y.name))
+    .forEach(p => add(`${avatarImg(p.avatar)}<span>${esc(p.name)}</span>`, pick[side] === p.id ? "sel" : "",
+      () => choose(p.id), pick[other] === p.id));
+  if (!list.children.length) list.innerHTML = '<p class="hint">No player with that name. Use ＋ New player.</p>';
+}
+function openNewPlayer() {
+  closePickers();
   $("playerName").value = ""; newAvatar = playerList.length % avatarCount;
   const g = $("avatarGrid"); g.innerHTML = "";
   for (let i = 0; i < avatarCount; i++) {
@@ -220,25 +240,26 @@ function showNewPlayer(on) {
     b.onclick = () => { newAvatar = i; g.querySelectorAll("button").forEach((x, j) => x.classList.toggle("sel", j === i)); };
     g.appendChild(b);
   }
-  $("playerName").focus();
+  $("newPlayerDlg").showModal(); $("playerName").focus();
 }
-$("newPlayerBtn").onclick = () => showNewPlayer(true);
-$("newPlayerCancel").onclick = () => showNewPlayer(false);
+$("newPlayerBtn").onclick = openNewPlayer;
+$("newPlayerCancel").onclick = () => $("newPlayerDlg").close();
 $("newPlayerSave").onclick = async () => {
   const name = $("playerName").value.trim();
   if (!name) return alert("Type a name for the player.");
   const p = await post("/api/players/create", { name, avatar: newAvatar });
   if (!p || !p.id) return;
-  playerList.push(p);
-  if (!pick.white || pick.white === "anon") pick.white = p.id; else if (!pick.black || pick.black === "anon") pick.black = p.id;
-  showNewPlayer(false); renderPick();
+  playerList.push(p); $("newPlayerDlg").close();
 };
 $("playerName").addEventListener("keydown", (e) => { if (e.key === "Enter") $("newPlayerSave").click(); });
-$("swapPlayers").onclick = () => { pick = { white: pick.black, black: pick.white }; renderPick(); };
+$("swapPlayers").onclick = () => { pick = { white: pick.black, black: pick.white }; ["white", "black"].forEach(buildPicker); };
+$("playersDlg").addEventListener("click", (e) => { if (!e.target.closest(".picker")) closePickers(); });
+$("playersDlg").addEventListener("cancel", (e) => {   // Esc closes an open dropdown first
+  if ([...document.querySelectorAll("#playersDlg .drop")].some(d => !d.classList.contains("hidden"))) { e.preventDefault(); closePickers(); }
+});
 $("playersCancel").onclick = () => { playersThen = null; $("playersDlg").close(); };
 $("playersGo").onclick = async () => {
-  if (!pick.white || !pick.black) return alert("Pick a player for White and for Black (Anonymous is fine too).");
-  localStorage.setItem("lastPlayers", JSON.stringify(pick));
+  if (pick.white !== "anon" && pick.white === pick.black) return alert("Pick two different players (Anonymous can be both).");
   const then = playersThen; playersThen = null; $("playersDlg").close();
   const id = (x) => x === "anon" ? null : x;
   if (then) await then(id(pick.white), id(pick.black));
@@ -386,17 +407,25 @@ function evalText(e) {
   if (Math.abs(e.cp) >= 10000) return e.cp > 0 ? "1-0" : "0-1";
   return (e.cp > 0 ? "+" : "") + (e.cp / 100).toFixed(1);
 }
-function renderAnalysis() {
-  const bar = $("evalBar"), graph = $("evalGraph");
-  if (!ana) { bar.classList.add("hidden"); graph.classList.add("hidden"); $("bestLine").textContent = ""; return; }
-  const e = ana.evals[ply], flipped = S.settings.flipped;
-  bar.classList.remove("hidden"); graph.classList.remove("hidden");
+function drawEvalBar(e) {
+  const bar = $("evalBar"), flipped = S.settings.flipped;
+  bar.classList.remove("hidden");
   const clamp = Math.max(-1000, Math.min(1000, e.cp)), whiteShare = 50 + clamp / 20;
   $("evalFill").style.height = (flipped ? 100 - whiteShare : whiteShare) + "%";
   $("evalFill").style.background = flipped ? "#2b2b2b" : "#f0f0f0";
   bar.style.background = flipped ? "#f0f0f0" : "#2b2b2b";
   const t = $("evalText"); t.textContent = evalText(e);
   const whiteTop = flipped; t.style.top = (e.cp >= 0) === whiteTop ? "4px" : ""; t.style.bottom = (e.cp >= 0) === whiteTop ? "" : "4px";
+}
+function moveText(san, loss, bestSan) {
+  const mark = loss >= 300 ? "??" : loss >= 100 ? "?" : loss >= 50 ? "?!" : "";
+  return mark ? ` ${san}${mark} lost ${(loss / 100).toFixed(1)} pawns; best was ${bestSan}.` : "";
+}
+function renderAnalysis() {
+  const bar = $("evalBar"), graph = $("evalGraph");
+  if (!ana) { bar.classList.add("hidden"); graph.classList.add("hidden"); $("bestLine").textContent = ""; return; }
+  const e = ana.evals[ply];
+  graph.classList.remove("hidden"); drawEvalBar(e);
   // graph
   const n = ana.evals.length, W = 400, Hh = 100;
   const y = (cp) => Hh / 2 - Math.max(-1000, Math.min(1000, cp)) / 1000 * (Hh / 2 - 4);
@@ -428,7 +457,7 @@ function renderReplay() {
   const p = curPly();
   const q = new URLSearchParams({ fen: p.fen, theme: S.settings.theme, flipped: S.settings.flipped });
   if (p.uci) q.set("lastmove", p.uci);
-  if (vari) q.set("explore", "1");
+  if (vari) { q.set("explore", "1"); const e = posEval(vply); if (e && e.best) q.set("arrow", e.best); }
   else if (ana && ana.evals[ply] && ana.evals[ply].best) q.set("arrow", ana.evals[ply].best);
   $("replayImg").src = "/api/board.svg?" + q;
   $("rPos").textContent = vari ? `Your line ${vply} / ${vari.plies.length}` : `${ply} / ${game.plies.length - 1}`;
@@ -445,8 +474,8 @@ function renderReplay() {
       s.className = i === vply - 1 ? "cur" : ""; s.onclick = () => { vply = i + 1; renderReplay(); };
       box.appendChild(s);
     });
-    $("bestLine").textContent = "You're exploring your own moves. Reset goes back to the game.";
-    $("evalBar").classList.add("hidden"); $("evalGraph").classList.add("hidden");
+    $("evalGraph").classList.add("hidden");
+    showVarEval();
   } else renderAnalysis();
 }
 const go = (n) => {
@@ -454,6 +483,41 @@ const go = (n) => {
   if (vari) { vply = Math.max(0, Math.min(vari.plies.length, n - vari.base)); return renderReplay(); }
   ply = Math.max(0, Math.min(game.plies.length - 1, n)); renderReplay();
 };
+// Stockfish on your own line: one position at a time, cached by FEN
+const varEvals = {};
+function linePly(i) { return i === 0 ? game.plies[vari.base] : vari.plies[i - 1]; }
+function posEval(i) {
+  if (i === 0 && ana && ana.evals[vari.base]) return ana.evals[vari.base];
+  const e = varEvals[linePly(i).fen];
+  return e && e !== "pending" && !e.error ? e : null;
+}
+async function fetchEval(fen) {
+  if (fen in varEvals) return;
+  varEvals[fen] = "pending";
+  try {
+    const r = await fetch("/api/eval?fen=" + encodeURIComponent(fen)), d = await r.json();
+    varEvals[fen] = r.ok ? d : { error: d.error || "Stockfish isn't available." };
+  } catch (err) { varEvals[fen] = { error: "Stockfish isn't available." }; }
+  if (vari && game && [vply, vply - 1].some(i => i >= 0 && linePly(i).fen === fen)) renderReplay();
+}
+function showVarEval() {
+  const p = linePly(vply), e = posEval(vply), raw = varEvals[p.fen];
+  if (raw && raw.error) { $("evalBar").classList.add("hidden"); $("bestLine").textContent = "You're exploring your own moves. " + raw.error; return; }
+  if (!e) { fetchEval(p.fen); $("bestLine").textContent = "Stockfish is looking at your line..."; return; }
+  drawEvalBar(e);
+  let txt = `Your line: evaluation ${evalText(e)}.`;
+  if (vply > 0) {
+    const prev = posEval(vply - 1);
+    if (!prev) fetchEval(linePly(vply - 1).fen);
+    else {
+      const whiteMoved = linePly(vply - 1).fen.split(" ")[1] === "w";
+      const loss = Math.max(0, Math.min(2000, whiteMoved ? prev.cp - e.cp : e.cp - prev.cp));
+      txt += moveText(p.san, loss, prev.best_san);
+    }
+  }
+  if (e.best_san) txt += ` Best now: ${e.best_san}` + (e.pv ? ` (${e.pv})` : "");
+  $("bestLine").textContent = txt;
+}
 function resetVariation() { if (vari) { ply = vari.base; vari = null; replayFrom = null; markReplay(); renderReplay(); } }
 $("varReset").onclick = resetVariation;
 (function buildReplayGrid() {

@@ -138,26 +138,29 @@ def classify(loss):
     return ""
 
 
-def analyse_positions(engine_path, fens, seconds=0.3, progress=lambda done, total: None):
+def analyse_positions(engine_path, fens, seconds=0.3, progress=lambda done, total: None, engine=None):
     """Evaluate each position. Returns a list of dicts (one per position)."""
+    if engine is None:
+        with chess.engine.SimpleEngine.popen_uci(engine_path) as eng:
+            return analyse_positions(None, fens, seconds, progress, eng)
+    eng = engine
     out = []
-    with chess.engine.SimpleEngine.popen_uci(engine_path) as eng:
-        for i, fen in enumerate(fens):
-            board = chess.Board(fen)
-            if board.is_game_over():
-                res = board.result()
-                cp = MATE_CP if res == "1-0" else -MATE_CP if res == "0-1" else 0
-                out.append({"cp": cp, "mate": None, "best": None, "best_san": None, "pv": ""})
-            else:
-                info = eng.analyse(board, chess.engine.Limit(time=seconds))
-                score = info["score"]
-                pv = info.get("pv", [])[:6]
-                mate = score.white().mate() if score.white().is_mate() else None
-                out.append({"cp": _cp(score), "mate": mate,
-                            "best": pv[0].uci() if pv else None,
-                            "best_san": board.san(pv[0]) if pv else None,
-                            "pv": board.variation_san(pv) if pv else ""})
-            progress(i + 1, len(fens))
+    for i, fen in enumerate(fens):
+        board = chess.Board(fen)
+        if board.is_game_over():
+            res = board.result()
+            cp = MATE_CP if res == "1-0" else -MATE_CP if res == "0-1" else 0
+            out.append({"cp": cp, "mate": None, "best": None, "best_san": None, "pv": ""})
+        else:
+            info = eng.analyse(board, chess.engine.Limit(time=seconds))
+            score = info["score"]
+            pv = info.get("pv", [])[:6]
+            mate = score.white().mate() if score.white().is_mate() else None
+            out.append({"cp": _cp(score), "mate": mate,
+                        "best": pv[0].uci() if pv else None,
+                        "best_san": board.san(pv[0]) if pv else None,
+                        "pv": board.variation_san(pv) if pv else ""})
+        progress(i + 1, len(fens))
     return out
 
 
@@ -182,6 +185,44 @@ class Analyzer:
         self.seconds = seconds
         self.jobs = {}
         self.lock = threading.Lock()
+        self._eval_lock = threading.Lock()
+        self._eng = None          # kept open for exploring lines
+        self._cache = {}
+
+    def evaluate(self, fen):
+        """One position, for lines the user explores. Uses Stockfish only if it's already installed."""
+        with self.lock:
+            if fen in self._cache:
+                return self._cache[fen]
+        path = find_stockfish(self.engine_dir)
+        if not path:
+            raise ValueError("Stockfish isn't installed yet. Press Analyze on a game once to get it.")
+        with self._eval_lock:
+            if self._eng is None:
+                self._eng = chess.engine.SimpleEngine.popen_uci(path)
+            try:
+                ev = analyse_positions(None, [fen], self.seconds, engine=self._eng)[0]
+            except Exception:
+                eng, self._eng = self._eng, None     # start a fresh engine next time
+                try:
+                    eng.close()
+                except Exception:
+                    pass
+                raise
+        with self.lock:
+            if len(self._cache) > 2000:
+                self._cache.clear()
+            self._cache[fen] = ev
+        return ev
+
+    def close(self):
+        with self._eval_lock:
+            if self._eng is not None:
+                try:
+                    self._eng.quit()
+                except Exception:
+                    pass
+                self._eng = None
 
     def result_path(self, game_id):
         return self.library_dir / (Path(game_id).stem + ".analysis.json")

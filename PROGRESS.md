@@ -137,7 +137,10 @@
   game just steps forward. Eval/arrows hidden while exploring. `/api/explore` checks legality.
 - Players (data/players.json, name + one of 20 avatars drawn in `chesstracker/players.py`). "Who's
   playing?" dialog before Start tracking / New game; Anonymous allowed on either side; last pick
-  remembered. Names saved as PGN White/Black (+WhiteAvatar/BlackAvatar); shown on clock and Library. 83 tests.
+  Names saved as PGN White/Black (+WhiteAvatar/BlackAvatar); shown on clock and Library.
+- Follow-ups: each side is a searchable dropdown, both default to Anonymous; New player is its own
+  dialog (no side). Your own line is evaluated by Stockfish one position at a time (`/api/eval`, kept-open
+  engine, cached; only if Stockfish is already installed): bar, arrow, best move, ?!/?/?? on your move. 85 tests.
 
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.

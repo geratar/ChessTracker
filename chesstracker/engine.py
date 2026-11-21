@@ -540,6 +540,7 @@ class Engine:
 
     def shutdown(self):
         self.running = False
+        self.analyzer.close()
         if self.writer:
             self.writer.release()
         if self.src:

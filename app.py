@@ -120,6 +120,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, e.analysis(q.get("id", "")))
             except ValueError as err:
                 return self._send(404, {"error": str(err)})
+        if url.path == "/api/eval":
+            try:
+                chess.Board(q.get("fen", ""))
+                return self._send(200, e.analyzer.evaluate(q["fen"]))
+            except (ValueError, KeyError) as err:
+                return self._send(404, {"error": str(err)})
+            except Exception as err:   # engine crashed: report, don't kill the server thread
+                return self._send(500, {"error": f"Stockfish failed: {err}"})
         if url.path == "/stream.mjpg":
             return self._stream(q.get("view", "camera"))
         self._send(404, {"error": "not found"})

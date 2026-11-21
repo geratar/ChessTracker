@@ -15,28 +15,47 @@ _BACKENDS = {
 
 
 def backend_id(name="auto"):
+    """First backend to try (kept for callers that need a single id)."""
+    return backend_candidates(name)[0]
+
+
+def backend_candidates(name="auto"):
+    """Backends to try in order. 'auto' tries several because some OpenCV
+    builds can't capture by index with a given backend (seen with DSHOW)."""
     if name == "auto":
         system = platform.system()
         if system == "Darwin":
-            return cv2.CAP_AVFOUNDATION
+            return [cv2.CAP_AVFOUNDATION, cv2.CAP_ANY]
         if system == "Windows":
-            return cv2.CAP_DSHOW  # opens much faster than MSMF
-        return cv2.CAP_ANY
+            return [cv2.CAP_MSMF, cv2.CAP_DSHOW, cv2.CAP_ANY]
+        return [cv2.CAP_V4L2, cv2.CAP_ANY]
     if name not in _BACKENDS:
         raise ValueError(f"Unknown camera_backend '{name}'. Use one of: auto, {', '.join(_BACKENDS)}")
-    return _BACKENDS[name]
+    return [_BACKENDS[name]]
 
 
-def list_cameras(max_index=5, backend="auto"):
-    """Return [(index, width, height)] for cameras that deliver a frame."""
-    found = []
-    for i in range(max_index):
-        cap = cv2.VideoCapture(i, backend_id(backend))
+def open_camera(index, backend="auto"):
+    """Open a camera index with the first backend that delivers a frame.
+    Returns (VideoCapture, backend_name) or (None, None)."""
+    for b in backend_candidates(backend):
+        cap = cv2.VideoCapture(index, b)
         if cap.isOpened():
             ok, frame = cap.read()
             if ok and frame is not None:
-                found.append((i, frame.shape[1], frame.shape[0]))
+                return cap, cap.getBackendName()
         cap.release()
+    return None, None
+
+
+def list_cameras(max_index=5, backend="auto"):
+    """Return [(index, width, height, backend_name)] for cameras that deliver a frame."""
+    found = []
+    for i in range(max_index):
+        cap, name = open_camera(i, backend)
+        if cap is not None:
+            found.append((i, int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                          int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)), name))
+            cap.release()
     return found
 
 
@@ -70,7 +89,10 @@ class FrameSource:
             self.cap.release()
             self.cap = None
         if self.is_camera:
-            self.cap = cv2.VideoCapture(self.source, backend_id(self.backend))
+            self.cap, _ = open_camera(self.source, self.backend)
+            if self.cap is None:
+                self.connected = False
+                return
             if self.width:
                 self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
             if self.height:

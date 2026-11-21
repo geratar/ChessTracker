@@ -197,8 +197,8 @@ def main():
         cams = list_cameras(cfg["max_cameras_to_scan"], cfg["camera_backend"])
         if not cams:
             print("No cameras found. Check the cable and camera permission for your terminal app.")
-        for i, w, h in cams:
-            print(f"Camera {i}: {w}x{h}")
+        for i, w, h, name in cams:
+            print(f"Camera {i}: {w}x{h} ({name})")
         return
 
     source = args.source if args.source else (args.camera if args.camera is not None else cfg["camera_index"])
@@ -207,6 +207,8 @@ def main():
         print(f"Could not open {source!r}. Try: python calibrate.py --list")
         if app.src.is_camera:
             print("On macOS, allow camera access for Terminal in System Settings > Privacy & Security > Camera.")
+            print("On Windows, turn on Settings > Privacy & security > Camera > 'Let desktop apps access your camera',")
+            print("and close other apps using the camera (Teams, Zoom, Camera app).")
     app.run()
 
 

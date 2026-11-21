@@ -152,7 +152,18 @@ def _extra(kind, c, d):
     raise ValueError(kind)
 
 
+ANON_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+            '<rect width="100" height="100" rx="22" fill="#4a4744"/>'
+            '<path d="M28 86 L74 86 L74 78 L67 73 C69 59 73 47 69 35 C65 23 55 16 44 16 L41 9 L35 17 '
+            'C28 21 22 31 20 42 L17 52 C17 57 22 59 27 57 L35 51 C39 51 43 49 46 46 C44 57 37 63 33 71 '
+            'L30 78Z" fill="#a8a6a3" stroke="#6b6966" stroke-width="2.5" stroke-linejoin="round"/>'
+            '<circle cx="40" cy="31" r="3" fill="#4a4744"/>'
+            '<path d="M24 78 L78 78" stroke="#6b6966" stroke-width="2.5"/></svg>')
+
+
 def avatar_svg(n):
+    if n == "anon":
+        return ANON_SVG
     n = int(n)
     if not 0 <= n < COUNT:
         raise ValueError("Unknown avatar")

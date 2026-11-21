@@ -22,8 +22,23 @@ function showTab(name, force) {
     return guardUnsaved("You're leaving the game. Save it first? (It stays open on the Play tab either way.)", () => showTab(name, true));
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === name));
+  document.body.classList.toggle("game", name === "play" || name === "library");
   if (name === "library") loadLibrary();
+  if (name === "profiles") loadProfiles();
+  fitViews();
 }
+// Play / Library fill the window without a page scroll bar: the board takes the height that's left.
+function fitViews() {
+  const v = document.querySelector(".view.active");
+  if (!v || !["play", "library"].includes(v.id)) return;
+  const row = v.querySelector(".play"), col = v.querySelector(".boardcol"), wrap = v.querySelector(".boardwrap");
+  const avail = Math.floor(window.innerHeight - row.getBoundingClientRect().top - window.scrollY - 16);
+  const below = col.scrollHeight - wrap.offsetHeight + (v.id === "library" ? 4 : 0);
+  const size = Math.max(240, Math.min(640, avail - below));
+  const set = (k, val) => { if (v.style.getPropertyValue(k) !== val) v.style.setProperty(k, val); };
+  set("--viewh", avail + "px"); set("--boardmax", size + "px");
+}
+window.addEventListener("resize", fitViews);
 document.querySelectorAll(".tab").forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
 // ---------------- wizard ----------------
@@ -97,7 +112,7 @@ function renderMoves(el, sans, current, onClick, marks) {
   el.scrollTop = el.scrollHeight;
 }
 function renderPlay() {
-  renderBoard();
+  renderBoard(); requestAnimationFrame(fitViews);
   const st = $("status");
   st.textContent = S.mode === "tracking" ? S.status : "Not tracking. Go to Setup and press Start tracking.";
   st.className = "status " + (S.mode === "tracking" ? S.status_kind : "info");
@@ -121,15 +136,12 @@ function renderPlay() {
   $("recBtn").classList.toggle("danger", S.recording);
   $("clock").classList.toggle("hidden", !playing);
   if (playing && S.clock) {
-    const fmt = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
     const P = S.players || {};
     ["white", "black"].forEach(side => {
       const p = P[side], el = $(side === "white" ? "clockWhite" : "clockBlack").querySelector(".who");
-      const html = p ? `${avatarImg(p.avatar)}<span>${esc(p.name)}</span>` : `<span>${side === "white" ? "White" : "Black"}</span>`;
+      const html = p ? `${avatarImg(p.avatar)}<span>${esc(p.name)}</span>` : ANON_HTML;
       if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; }
     });
-    $("clockWhite").querySelector("b").textContent = fmt(S.clock.white);
-    $("clockBlack").querySelector("b").textContent = fmt(S.clock.black);
     $("clockWhite").classList.toggle("active", S.clock.turn === "white");
     $("clockBlack").classList.toggle("active", S.clock.turn === "black");
     $("tapBtn").disabled = S.clock.reading;
@@ -182,9 +194,9 @@ $("newBtn").onclick = () => guardUnsaved("Start a new game? Save this one first?
 // ---------------- players ----------------
 // pick.white / pick.black: "anon" or a player id. Each side is a dropdown with a search box.
 let playerList = [], avatarCount = 20, pick = { white: "anon", black: "anon" }, newAvatar = 0, playersThen = null;
-const avatarImg = (n) => n === null || n === undefined ? "" : `<img class="av" src="/api/avatar/${n}.svg" alt="">`;
+const avatarImg = (n) => `<img class="av" src="/api/avatar/${n === null || n === undefined ? "anon" : n}.svg" alt="">`;
 const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const ANON_HTML = `<span class="av anon">?</span><span>Anonymous</span>`;
+const ANON_HTML = `${avatarImg(null)}<span>Anonymous</span>`;
 const pickEl = (side) => $(side === "white" ? "pickWhite" : "pickBlack");
 async function choosePlayers(then) {
   const r = await api("/api/players"); playerList = r.players; avatarCount = r.avatars;
@@ -230,9 +242,13 @@ function fillList(side) {
       () => choose(p.id), pick[other] === p.id));
   if (!list.children.length) list.innerHTML = '<p class="hint">No player with that name. Use ＋ New player.</p>';
 }
-function openNewPlayer() {
+let editId = null, afterPlayerSaved = null;
+function openNewPlayer(edit) {
   closePickers();
-  $("playerName").value = ""; newAvatar = playerList.length % avatarCount;
+  editId = edit ? edit.id : null;
+  $("newPlayerTitle").textContent = edit ? "Edit player" : "New player";
+  $("newPlayerSave").textContent = edit ? "Save" : "Add player";
+  $("playerName").value = edit ? edit.name : ""; newAvatar = edit ? edit.avatar : playerList.length % avatarCount;
   const g = $("avatarGrid"); g.innerHTML = "";
   for (let i = 0; i < avatarCount; i++) {
     const b = document.createElement("button"); b.className = i === newAvatar ? "sel" : "";
@@ -242,14 +258,17 @@ function openNewPlayer() {
   }
   $("newPlayerDlg").showModal(); $("playerName").focus();
 }
-$("newPlayerBtn").onclick = openNewPlayer;
+$("newPlayerBtn").onclick = () => { afterPlayerSaved = null; openNewPlayer(); };
 $("newPlayerCancel").onclick = () => $("newPlayerDlg").close();
 $("newPlayerSave").onclick = async () => {
   const name = $("playerName").value.trim();
   if (!name) return alert("Type a name for the player.");
-  const p = await post("/api/players/create", { name, avatar: newAvatar });
+  const p = editId ? await post("/api/players/update", { id: editId, name, avatar: newAvatar })
+    : await post("/api/players/create", { name, avatar: newAvatar });
   if (!p || !p.id) return;
-  playerList.push(p); $("newPlayerDlg").close();
+  if (!editId) playerList.push(p);
+  $("newPlayerDlg").close();
+  if (afterPlayerSaved) afterPlayerSaved(p);
 };
 $("playerName").addEventListener("keydown", (e) => { if (e.key === "Enter") $("newPlayerSave").click(); });
 $("swapPlayers").onclick = () => { pick = { white: pick.black, black: pick.white }; ["white", "black"].forEach(buildPicker); };
@@ -345,6 +364,7 @@ $("settingsBtn").onclick = () => {
     box.appendChild(b);
   });
   $("flipSetting").checked = S.settings.flipped;
+  $("lostSound").checked = S.settings.lost_sound !== false;
   document.querySelectorAll("#detectModes button").forEach(b => {
     b.classList.toggle("sel", b.dataset.detect === (S.settings.detect || "auto"));
     b.onclick = async () => { await post("/api/settings", { detect: b.dataset.detect });
@@ -358,6 +378,8 @@ $("settingsBtn").onclick = () => {
   $("settingsDlg").showModal();
 };
 $("flipSetting").onchange = (e) => post("/api/settings", { flipped: e.target.checked });
+$("lostSound").onchange = (e) => post("/api/settings", { lost_sound: e.target.checked });
+$("testSound").onclick = () => post("/api/test_sound");
 $("closeSettings").onclick = () => $("settingsDlg").close();
 
 // ---------------- library ----------------
@@ -368,7 +390,7 @@ async function loadLibrary() {
   games.forEach(g => {
     const d = document.createElement("div"); d.className = "g" + (game && game.id === g.id ? " sel" : "");
     const res = { "1-0": "1-0", "0-1": "0-1", "1/2-1/2": "½-½" }[g.result] || "";
-    const who = (p, fallback) => p ? `${avatarImg(p.avatar)}<span>${esc(p.name)}</span>` : `<span>${fallback}</span>`;
+    const who = (p, fallback) => p ? `${avatarImg(p.avatar)}<span>${esc(p.name)}</span>` : `${avatarImg(null)}<span>${fallback}</span>`;
     const vs = g.white || g.black ? `<div class="vs">${who(g.white, "Anonymous")}<small>vs</small>${who(g.black, "Anonymous")}</div>` : "";
     d.innerHTML = `<span class="res">${res}</span><b></b>${vs}<small>${g.date} ${g.time} · ${g.moves} moves</small>`; d.querySelector("b").textContent = g.name;
     d.onclick = () => openGame(g.id); el.appendChild(d);
@@ -564,6 +586,57 @@ $("copyPgn").onclick = () => { if (game) navigator.clipboard.writeText(game.pgn)
 $("deleteGame").onclick = async () => {
   if (game && confirm(`Delete "${game.name}"?`)) { await post("/api/library/delete", { id: game.id }); game = null; ana = null; renderAnalysis(); $("replayImg").removeAttribute("src"); $("replayMoves").innerHTML = ""; loadLibrary(); }
 };
+
+// ---------------- profiles ----------------
+let profiles = [], profileSel = null;
+async function loadProfiles() {
+  const r = await api("/api/players"); avatarCount = r.avatars; playerList = r.players;
+  profiles = await api("/api/profiles");
+  if (!profiles.some(p => p.id === profileSel)) profileSel = profiles.length ? profiles[0].id : null;
+  const el = $("profileList"); el.innerHTML = profiles.length ? "" : '<p class="hint">No players yet.</p>';
+  profiles.forEach(p => {
+    const b = document.createElement("button"); b.className = p.id === profileSel ? "sel" : "";
+    b.innerHTML = `${avatarImg(p.avatar)}<span><b>${esc(p.name)}</b><small>${p.games} game${p.games === 1 ? "" : "s"}${p.win_rate !== null ? ` · ${p.win_rate}% wins` : ""}</small></span>`;
+    b.onclick = () => { profileSel = p.id; loadProfilesView(); };
+    el.appendChild(b);
+  });
+  renderProfile();
+}
+function loadProfilesView() { document.querySelectorAll("#profileList button").forEach((b, i) => b.classList.toggle("sel", profiles[i].id === profileSel)); renderProfile(); }
+$("addProfile").onclick = () => { afterPlayerSaved = (p) => { profileSel = p.id; loadProfiles(); }; openNewPlayer(); };
+function renderProfile() {
+  const box = $("profileDetail"), p = profiles.find(x => x.id === profileSel);
+  if (!p) { box.innerHTML = '<p class="hint">Add players, then pick them in "Who\'s playing?" before a game.</p>'; return; }
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const pct = (n, d) => d ? Math.round(100 * n / d) + "%" : "–";
+  const tile = (label, value, sub) => `<div class="tile"><small>${label}</small><b>${value}</b>${sub ? `<span>${sub}</span>` : ""}</div>`;
+  const fin = p.wins + p.draws + p.losses;
+  const bar = (w, d, l) => { const t = w + d + l; return t ? `<div class="wdl"><i class="w" style="flex:${w}"></i><i class="d" style="flex:${d}"></i><i class="l" style="flex:${l}"></i></div>` : '<div class="wdl empty"></div>'; };
+  const streak = p.streak ? (p.streak.kind === "L" ? `${p.streak.length} loss${p.streak.length > 1 ? "es" : ""}` : plural(p.streak.length, p.streak.kind === "W" ? "win" : "draw")) : "–";
+  const col = (side, c) => `<tr><td>${side === "white" ? "♔ White" : "♚ Black"}</td><td>${c.games}</td><td>${c.wins}</td><td>${c.draws}</td><td>${c.losses}</td><td>${pct(c.wins, c.wins + c.draws + c.losses)}</td><td>${bar(c.wins, c.draws, c.losses)}</td></tr>`;
+  const opps = p.opponents.map(o => `<tr><td class="who">${avatarImg(o.avatar)}<span>${esc(o.name)}</span></td><td>${o.games}</td><td>${o.wins}</td><td>${o.draws}</td><td>${o.losses}</td><td>${pct(o.wins, o.wins + o.draws + o.losses)}</td><td>${bar(o.wins, o.draws, o.losses)}</td></tr>`).join("");
+  const res = { win: "Won", loss: "Lost", draw: "Draw", unfinished: "Not finished" };
+  const recent = p.recent.map((g, i) => `<div class="g" data-i="${i}"><span class="res r-${g.result}">${res[g.result]}</span><b>${esc(g.name)}</b><small>${g.date} · ${g.colour === "white" ? "White" : "Black"} vs ${esc(g.opponent)} · ${plural(Math.ceil(g.moves / 2), "move")}</small></div>`).join("");
+  box.innerHTML = `
+    <div class="phead">${avatarImg(p.avatar)}<div><h2>${esc(p.name)}</h2><small>${p.games ? `Played ${p.first === p.last ? "on " + p.first : `from ${p.first} to ${p.last}`}` : "No games yet"}</small></div>
+      <button id="editProfile" class="ghost">✎ Edit</button></div>
+    <div class="tiles">
+      ${tile("Games", p.games, p.unfinished ? `${p.unfinished} not finished` : "")}
+      ${tile("Win rate", p.win_rate === null ? "–" : p.win_rate + "%", fin ? `${p.wins} W · ${p.draws} D · ${p.losses} L` : "")}
+      ${tile("Score", p.score_rate === null ? "–" : p.score_rate + "%", "draws count half")}
+      ${tile("Current streak", streak, p.streak ? "in a row" : "")}
+      ${tile("Average game", p.avg_moves === null ? "–" : plural(p.avg_moves, "move"), "")}
+      ${tile("Favourite first move", p.favourite.white || "–", p.favourite.black ? `as Black: ${p.favourite.black}` : "as White")}
+    </div>
+    <h3>By colour</h3>
+    <table class="stats"><tr><th></th><th>Games</th><th>Won</th><th>Draw</th><th>Lost</th><th>Win %</th><th></th></tr>${col("white", p.white)}${col("black", p.black)}</table>
+    <h3>Against</h3>
+    ${opps ? `<table class="stats"><tr><th></th><th>Games</th><th>Won</th><th>Draw</th><th>Lost</th><th>Win %</th><th></th></tr>${opps}</table>` : '<p class="hint">No games yet.</p>'}
+    <h3>Recent games</h3>
+    <div class="gamelist">${recent || '<p class="hint">No games yet.</p>'}</div>`;
+  $("editProfile").onclick = () => { afterPlayerSaved = () => loadProfiles(); openNewPlayer(p); };
+  box.querySelectorAll(".gamelist .g").forEach(d => d.onclick = async () => { showTab("library"); await openGame(p.recent[+d.dataset.i].id); });
+}
 
 // ---------------- polling ----------------
 let warpOn = false;

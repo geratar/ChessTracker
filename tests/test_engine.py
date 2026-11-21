@@ -160,3 +160,39 @@ def test_players_saved_with_game(engine):
     g = engine.list_games()[0]
     assert g["white"] == {"name": "Anna", "avatar": 2} and g["black"] is None
     assert engine.load_game(gid)["white"]["name"] == "Anna"
+
+
+def test_player_stats(engine):
+    anna = engine.players.create("Anna", 1)
+    ben = engine.players.create("Ben", 2)
+    for white, black, moves, result in ((anna, ben, ("e4", "e5"), "1-0"), (ben, anna, ("d4", "d5"), "1-0"),
+                                        (anna, None, ("e4", "c5"), "1/2-1/2"), (anna, ben, ("e4",), "*")):
+        engine.start_tracking(white=white["id"], black=black["id"] if black else None)
+        for m in moves:
+            engine.manual_move(m)
+        engine.save_game("g", result)
+        time.sleep(1.05)          # file names carry the second
+    st = {s["name"]: s for s in engine.player_stats()}
+    a = st["Anna"]
+    assert (a["games"], a["wins"], a["losses"], a["draws"], a["unfinished"]) == (4, 1, 1, 1, 1)
+    assert a["white"] == {"games": 3, "wins": 1, "draws": 1, "losses": 0}
+    assert a["win_rate"] == 33 and a["score_rate"] == 50
+    assert a["favourite"] == {"white": "e4", "black": "d5"}
+    assert a["opponents"][0]["name"] == "Ben" and a["opponents"][0]["games"] == 3
+    assert a["streak"] == {"kind": "D", "length": 1}
+    assert st["Ben"]["wins"] == 1 and st["Ben"]["losses"] == 1
+
+
+def test_lost_sound_setting(engine):
+    from chesstracker.tracker import Event
+    played = []
+    engine.alert = lambda: played.append(1)
+    engine._on_event(Event("lost", 0.0, "Lost track"))
+    engine._on_event(Event("lost", 0.0, "Lost track"))      # not again right away
+    time.sleep(0.1)
+    assert played == [1]
+    engine.update_settings(lost_sound=False)
+    engine._last_alert = -1e9
+    engine._on_event(Event("lost", 0.0, "Lost track"))
+    time.sleep(0.1)
+    assert played == [1] and engine.settings["lost_sound"] is False

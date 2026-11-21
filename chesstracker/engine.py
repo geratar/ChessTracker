@@ -5,6 +5,8 @@ runs the tracker while tracking, and keeps the latest JPEGs for the live views.
 All public methods are thread-safe.
 """
 import json
+import subprocess
+import sys
 import threading
 import time
 
@@ -30,7 +32,25 @@ THEMES = {
     "green": {"square light": "#ebecd0", "square dark": "#779556",
               "square light lastmove": "#f5f682", "square dark lastmove": "#b9ca43"},
 }
-SETTINGS_DEFAULTS = {"theme": "green", "flipped": False, "speed": "fast", "detect": "auto"}
+SETTINGS_DEFAULTS = {"theme": "green", "flipped": False, "speed": "fast", "detect": "auto", "lost_sound": True}
+MAC_ALERT = "/System/Library/Sounds/Sosumi.aiff"
+
+
+def play_alert():
+    """An attention sound on the computer running the app (so it works with the browser in the back)."""
+    try:
+        if sys.platform == "darwin":
+            for _ in range(2):
+                subprocess.run(["afplay", MAC_ALERT], timeout=5, check=False)
+        elif sys.platform.startswith("win"):
+            import winsound
+            for _ in range(2):
+                winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+                time.sleep(0.4)
+        else:
+            print("\a", end="", flush=True)
+    except Exception:
+        pass
 DETECT_MODES = ("auto", "tap")
 # How long the squares of a move must be still before it is read (seconds).
 SPEEDS = {"fast": {"stable_seconds": 0.13, "confirm_seconds": 0.0},   # 2 frames: blitz
@@ -89,6 +109,8 @@ class Engine:
         self.saved_plies = 0           # moves already saved to the library
         self.analyzer = Analyzer(data_dir / "engine", self.library_dir)
         self.players = Players(data_dir / "players.json")
+        self._last_alert = -1e9
+        self.alert = play_alert          # replaced in tests
         self.game_players = {"white": None, "black": None}   # player ids for the current game
         self.running = True
         self.thread = threading.Thread(target=self._loop, daemon=True)
@@ -292,8 +314,10 @@ class Engine:
         return {**self.cfg, **SPEEDS.get(self.settings.get("speed"), SPEEDS["normal"]),
                 "detect": self.settings.get("detect", "auto")}
 
-    def update_settings(self, theme=None, flipped=None, speed=None, detect=None):
+    def update_settings(self, theme=None, flipped=None, speed=None, detect=None, lost_sound=None):
         with self.lock:
+            if lost_sound is not None:
+                self._save_settings(lost_sound=bool(lost_sound))
             if detect is not None:
                 if detect not in DETECT_MODES:
                     raise ValueError(f"Unknown mode {detect}")
@@ -332,6 +356,7 @@ class Engine:
                 if p:
                     game.headers[side.capitalize()] = p["name"]
                     game.headers[side.capitalize() + "Avatar"] = str(p["avatar"])
+                    game.headers[side.capitalize() + "Id"] = p["id"]
             self.library_dir.mkdir(parents=True, exist_ok=True)
             safe = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in name).strip()[:40]
             path = self.library_dir / f"{time.strftime('%Y%m%d_%H%M%S')}_{safe}.pgn"
@@ -354,6 +379,86 @@ class Engine:
                         "moves": len(list(g.mainline_moves())),
                         "result": g.headers.get("Result", "*"), **self._game_players(g)})
         return out
+
+    def player_stats(self):
+        """Per player: results overall / by colour, head-to-head, first moves and recent games."""
+        players = self.players.all()
+        by_id = {p["id"]: p for p in players}
+        by_name = {p["name"].lower(): p for p in players}
+        stats = {p["id"]: {**p, "games": 0, "wins": 0, "losses": 0, "draws": 0, "unfinished": 0,
+                           "white": {"games": 0, "wins": 0, "draws": 0, "losses": 0},
+                           "black": {"games": 0, "wins": 0, "draws": 0, "losses": 0},
+                           "moves": 0, "first": None, "last": None, "opponents": {}, "openings": {},
+                           "recent": [], "streak": ""} for p in players}
+        files = sorted(self.library_dir.glob("*.pgn")) if self.library_dir.exists() else []
+        for f in files:                      # oldest first (file names start with the date)
+            with open(f) as fh:
+                g = chess.pgn.read_game(fh)
+            if g is None:
+                continue
+            h = g.headers
+            ids = {}
+            for side in ("white", "black"):
+                pid = h.get(side.capitalize() + "Id")
+                p = by_id.get(pid) or by_name.get(h.get(side.capitalize(), "").lower())
+                ids[side] = p["id"] if p else None
+            moves = list(g.mainline_moves())
+            result = h.get("Result", "*")
+            date = h.get("Date", "?").replace(".", "-")
+            for side, other in (("white", "black"), ("black", "white")):
+                pid = ids[side]
+                if pid is None:
+                    continue
+                st = stats[pid]
+                outcome = {"1-0": "win" if side == "white" else "loss",
+                           "0-1": "win" if side == "black" else "loss",
+                           "1/2-1/2": "draw"}.get(result, "unfinished")
+                st["games"] += 1
+                st["moves"] += (len(moves) + 1) // 2
+                st[{"win": "wins", "loss": "losses", "draw": "draws", "unfinished": "unfinished"}[outcome]] += 1
+                col = st[side]
+                col["games"] += 1
+                if outcome != "unfinished":
+                    col[{"win": "wins", "loss": "losses", "draw": "draws"}[outcome]] += 1
+                st["first"] = st["first"] or date
+                st["last"] = date
+                opp_id = ids[other]
+                opp = by_id[opp_id]["name"] if opp_id else (h.get(other.capitalize(), "?") if h.get(other.capitalize(), "?") != "?" else "Anonymous")
+                o = st["opponents"].setdefault(opp_id or "anon:" + opp, {"name": opp, "avatar": by_id[opp_id]["avatar"] if opp_id else None,
+                                                                        "games": 0, "wins": 0, "draws": 0, "losses": 0})
+                o["games"] += 1
+                if outcome != "unfinished":
+                    o[{"win": "wins", "loss": "losses", "draw": "draws"}[outcome]] += 1
+                idx = 0 if side == "white" else 1
+                if len(moves) > idx:
+                    b = g.board()
+                    if idx:
+                        b.push(moves[0])
+                    san = b.san(moves[idx])
+                    key = f"{side}:{san}"
+                    st["openings"][key] = st["openings"].get(key, 0) + 1
+                if outcome != "unfinished":
+                    letter = outcome[0].upper()
+                    st["streak"] = (st["streak"] + letter) if st["streak"].endswith(letter) or not st["streak"] else letter
+                st["recent"].append({"id": f.name, "name": h.get("Event", f.stem), "date": date,
+                                     "colour": side, "opponent": opp, "result": outcome, "moves": len(moves)})
+        out = []
+        for st in stats.values():
+            finished = st["wins"] + st["draws"] + st["losses"]
+            st["win_rate"] = round(100 * st["wins"] / finished) if finished else None
+            st["score_rate"] = round(100 * (st["wins"] + st["draws"] / 2) / finished) if finished else None
+            st["avg_moves"] = round(st["moves"] / st["games"]) if st["games"] else None
+            st["opponents"] = sorted(st["opponents"].values(), key=lambda o: -o["games"])
+            fav = {}
+            for side in ("white", "black"):
+                cands = [(n, k.split(":", 1)[1]) for k, n in st["openings"].items() if k.startswith(side)]
+                fav[side] = max(cands)[1] if cands else None
+            st["favourite"] = fav
+            del st["openings"]
+            st["streak"] = {"kind": st["streak"][:1], "length": len(st["streak"])} if st["streak"] else None
+            st["recent"] = st["recent"][::-1][:10]
+            out.append(st)
+        return sorted(out, key=lambda x: (-x["games"], x["name"].lower()))
 
     @staticmethod
     def _game_players(g):
@@ -537,6 +642,18 @@ class Engine:
             self._set_status(q, "ask")
         else:
             self._set_status(ev.text, "warn")
+            if ev.kind == "lost":
+                self._lost_alert()
+
+    def _lost_alert(self):
+        now = time.monotonic()
+        if not self.settings.get("lost_sound", True) or now - self._last_alert < 20:
+            return
+        self._last_alert = now
+        threading.Thread(target=self.alert, daemon=True).start()
+
+    def test_sound(self):
+        threading.Thread(target=self.alert, daemon=True).start()
 
     def shutdown(self):
         self.running = False

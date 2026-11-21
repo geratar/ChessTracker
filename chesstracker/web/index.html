@@ -12,6 +12,7 @@
     <button data-tab="setup" class="tab active">Setup</button>
     <button data-tab="play" class="tab">Play</button>
     <button data-tab="library" class="tab">Library</button>
+    <button data-tab="profiles" class="tab">Profiles</button>
   </nav>
   <button id="settingsBtn" class="ghost" title="Settings">⚙ Settings</button>
 </header>
@@ -96,9 +97,9 @@
           <div class="grid" id="boardGrid"></div>
         </div>
         <div class="clock hidden" id="clock">
-          <div id="clockWhite"><span class="who"></span><b>0:00</b></div>
-          <button id="tapBtn" class="primary" title="Press after each move (or the Space key)">✓ Move done <small>Space</small></button>
-          <div id="clockBlack"><span class="who"></span><b>0:00</b></div>
+          <div id="clockWhite"><span class="who"></span></div>
+          <button id="tapBtn" class="ghost" title="Press after each move (or the Space key)">✓ Move done <small>Space</small></button>
+          <div id="clockBlack"><span class="who"></span></div>
         </div>
         <div class="status" id="status">Not tracking yet. Use Setup to start.</div>
         <div class="ask hidden" id="ask"></div>
@@ -160,6 +161,16 @@
       </div>
     </div>
   </section>
+  <!-- ============ PROFILES ============ -->
+  <section id="profiles" class="view">
+    <div class="profiles">
+      <div class="plcol">
+        <div class="plhead"><h2>Players</h2><button id="addProfile" class="ghost">＋ New player</button></div>
+        <div id="profileList" class="plist"></div>
+      </div>
+      <div class="profile" id="profileDetail"><p class="hint">Add players, then pick them in "Who's playing?" before a game.</p></div>
+    </div>
+  </section>
 </main>
 
 <!-- Settings dialog -->
@@ -178,6 +189,9 @@
   </div>
   <p class="hint">You can always press Space (or ✓ Move done) after a move, like a chess clock, to have it read
     right away. "Only when I tap" ignores the board until you do: best for fast games.</p>
+  <p>Alerts</p>
+  <div class="row"><label class="check"><input type="checkbox" id="lostSound"> Play a sound when the app loses track of the game</label>
+    <button id="testSound" class="ghost">▶ Test</button></div>
   <p>Updates</p>
   <p class="hint" id="updateInfo">Not checked yet.</p>
   <div class="row"><button id="checkUpdate" class="ghost">Check for updates</button>
@@ -216,7 +230,7 @@
 
 <!-- New player dialog (separate from choosing who plays) -->
 <dialog id="newPlayerDlg">
-  <h2>New player</h2>
+  <h2 id="newPlayerTitle">New player</h2>
   <label>Name <input id="playerName" maxlength="30" placeholder="e.g. Anna"></label>
   <p>Avatar</p>
   <div class="avatars" id="avatarGrid"></div>

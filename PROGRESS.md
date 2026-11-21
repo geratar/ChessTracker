@@ -141,6 +141,11 @@
 - Follow-ups: each side is a searchable dropdown, both default to Anonymous; New player is its own
   dialog (no side). Your own line is evaluated by Stockfish one position at a time (`/api/eval`, kept-open
   engine, cached; only if Stockfish is already installed): bar, arrow, best move, ?!/?/?? on your move. 85 tests.
+- Polish (16:30): sound when tracking is lost (server-side: afplay on Mac, Settings > Alerts, on by default,
+  max once per 20 s); Anonymous = grey knight avatar; Move done button small; thinking-time clock hidden
+  (player boxes still show whose turn); Play/Library fit the window (board sized by JS `fitViews`, no page
+  scroll); Profiles tab with per-player stats (`/api/profiles`: W/D/L, win/score %, by colour,
+  head-to-head, streak, favourite first moves, recent games). Games now store WhiteId/BlackId. 87 tests.
 
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.

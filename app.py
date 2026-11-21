@@ -108,6 +108,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, {"error": "not found"})
         if url.path == "/api/players":
             return self._send(200, {"players": e.players.all(), "avatars": players.COUNT})
+        if url.path == "/api/profiles":
+            return self._send(200, e.player_stats())
         if url.path == "/api/library":
             return self._send(200, e.list_games())
         if url.path == "/api/game":
@@ -154,7 +156,9 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/undo": lambda: e.undo(),
                 "/api/move": lambda: e.manual_move(d["move"]),
                 "/api/correct": lambda: e.correct_last(d["move"]),
-                "/api/settings": lambda: e.update_settings(d.get("theme"), d.get("flipped"), d.get("speed"), d.get("detect")),
+                "/api/settings": lambda: e.update_settings(d.get("theme"), d.get("flipped"), d.get("speed"), d.get("detect"),
+                                                         d.get("lost_sound")),
+                "/api/test_sound": lambda: e.test_sound(),
                 "/api/library/save": lambda: {"id": e.save_game(d.get("name"), d.get("result", "*"))},
                 "/api/analyze": lambda: e.analyze(d["id"]),
                 "/api/library/delete": lambda: e.delete_game(d["id"]),

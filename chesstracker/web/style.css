@@ -69,3 +69,18 @@ dialog input[type=text], dialog input:not([type]) { width:100%; padding:8px; mar
 .themes span { display:block; text-align:center; font-size:13px; margin-top:4px; }
 .check { display:flex; gap:8px; align-items:center; }
 footer { color:#6e6c69; font-size:11px; padding:10px 20px; }
+
+.results { display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; margin-bottom:6px; }
+.results label { display:flex; gap:6px; align-items:center; }
+.analysisrow { display:flex; gap:8px; align-items:stretch; }
+.analysisrow .boardwrap { flex:1; }
+.evalbar { width:28px; background:#2b2b2b; border-radius:4px; position:relative; overflow:hidden; }
+.evalbar div { position:absolute; left:0; right:0; bottom:0; background:#f0f0f0; transition:height .3s; }
+.evalbar span { position:absolute; left:0; right:0; text-align:center; font-size:11px; font-weight:700; color:#777; z-index:1; }
+.analysisbox { background:var(--panel); border-radius:8px; padding:10px; margin-top:12px; }
+.progress { height:8px; background:#3c3a37; border-radius:4px; overflow:hidden; margin-top:8px; }
+.progress div { height:100%; width:0; background:var(--accent); transition:width .3s; }
+#evalGraph { width:100%; height:90px; background:#1f1d1b; border-radius:6px; margin-top:8px; cursor:pointer; }
+.best { margin:8px 0 0; font-size:14px; }
+.mark-qq { color:#e05a4f; font-weight:700; } .mark-q { color:#e6a23c; font-weight:700; } .mark-qe { color:#e6d23c; font-weight:700; }
+.gamelist .res { float:right; color:var(--text); font-weight:600; }

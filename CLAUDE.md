@@ -22,6 +22,7 @@ No neural nets, paid APIs, databases or frameworks unless simpler methods demons
 - `app.py` + `chesstracker/engine.py` + `chesstracker/web/`: main app. Local HTTP server (stdlib), browser UI
   (wizard, play, library, settings), MJPEG camera streams, board SVG via chess.svg (cburnett pieces).
   Data in `data/` (calibration.json, settings.json, library/*.pgn), gitignored.
+- `chesstracker/analysis.py`: Stockfish find/auto-download (GitHub release, picks asset per OS/CPU) and game analysis; results cached as library/<id>.analysis.json
 - `ChessTracker.command` / `.bat`: the only launchers the user should need.
 - `calibrate.py`, `track.py` (OpenCV-window versions), `replay.py` (tracker on a video): developer tools
 - `tests/fixtures/game1`: real frames from the user's board (e4 d5 exd5 c6 + hands) for regression tests

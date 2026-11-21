@@ -68,3 +68,39 @@ def test_settings(engine):
     assert engine.state()["settings"]["flipped"] is True
     with pytest.raises(ValueError):
         engine.update_settings(theme="pink")
+
+
+def test_result_and_unsaved_flag(engine):
+    engine.start_tracking()
+    engine.manual_move("e4")
+    assert engine.state()["unsaved"]
+    gid = engine.save_game("Won it", "1-0")
+    assert not engine.state()["unsaved"]
+    assert engine.list_games()[0]["result"] == "1-0"
+    assert engine.load_game(gid)["result"] == "1-0"
+    assert "1-0" in engine.load_game(gid)["pgn"]
+    engine.manual_move("e5")
+    assert engine.state()["unsaved"]
+    with pytest.raises(ValueError):
+        engine.save_game("x", "2-0")
+
+
+@pytest.mark.skipif(__import__("chesstracker.analysis", fromlist=["x"]).find_stockfish("/none") is None,
+                    reason="no stockfish")
+def test_analysis_end_to_end(engine):
+    engine.start_tracking()
+    for m in ("e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6", "Qxf7#"):
+        engine.manual_move(m)
+    gid = engine.save_game("Scholar", "1-0")
+    engine.analyzer.seconds = 0.05
+    engine.analyze(gid)
+    for _ in range(200):
+        st = engine.analysis(gid)
+        if st["state"] in ("done", "error"):
+            break
+        time.sleep(0.05)
+    assert st["state"] == "done", st
+    res = st["result"]
+    assert len(res["evals"]) == 8 and len(res["moves"]) == 7
+    assert res["moves"][5]["mark"] == "??"           # ...Nf6 allows mate
+    assert res["evals"][-1]["cp"] == 10000

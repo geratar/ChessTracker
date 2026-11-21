@@ -22,13 +22,17 @@ CONTENT_TYPES = {".html": "text/html", ".js": "application/javascript", ".css": 
                  ".svg": "image/svg+xml", ".png": "image/png"}
 
 
-def board_svg(fen, lastmove=None, theme="green", flipped=False, size=560):
+def board_svg(fen, lastmove=None, theme="green", flipped=False, size=560, arrow=None):
     board = chess.Board(fen)
     lm = chess.Move.from_uci(lastmove) if lastmove else None
+    arrows = []
+    if arrow:
+        a = chess.Move.from_uci(arrow)
+        arrows = [chess.svg.Arrow(a.from_square, a.to_square, color="#3b82f6cc")]
     check = board.king(board.turn) if board.is_check() else None
     colors = dict(THEMES.get(theme, THEMES["green"]))
     colors.update({"margin": "#302e2b", "coord": "#bababa"})
-    return chess.svg.board(board, lastmove=lm, check=check, size=size,
+    return chess.svg.board(board, lastmove=lm, check=check, size=size, arrows=arrows,
                            orientation=chess.BLACK if flipped else chess.WHITE, colors=colors)
 
 
@@ -66,13 +70,22 @@ class Handler(BaseHTTPRequestHandler):
             s = e.settings
             fen = q.get("fen") or e.state()["fen"]
             flipped = q.get("flipped", str(s.get("flipped", False))).lower() == "true"
-            return self._send(200, board_svg(fen, q.get("lastmove"), q.get("theme", s.get("theme")), flipped),
-                              "image/svg+xml")
+            try:
+                svg = board_svg(fen, q.get("lastmove"), q.get("theme", s.get("theme")), flipped,
+                                arrow=q.get("arrow"))
+            except ValueError as err:
+                return self._send(400, {"error": str(err)})
+            return self._send(200, svg, "image/svg+xml")
         if url.path == "/api/library":
             return self._send(200, e.list_games())
         if url.path == "/api/game":
             try:
                 return self._send(200, e.load_game(q.get("id", "")))
+            except ValueError as err:
+                return self._send(404, {"error": str(err)})
+        if url.path == "/api/analysis":
+            try:
+                return self._send(200, e.analysis(q.get("id", "")))
             except ValueError as err:
                 return self._send(404, {"error": str(err)})
         if url.path == "/stream.mjpg":
@@ -99,7 +112,8 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/move": lambda: e.manual_move(d["move"]),
                 "/api/correct": lambda: e.correct_last(d["move"]),
                 "/api/settings": lambda: e.update_settings(d.get("theme"), d.get("flipped")),
-                "/api/library/save": lambda: {"id": e.save_game(d.get("name"))},
+                "/api/library/save": lambda: {"id": e.save_game(d.get("name"), d.get("result", "*"))},
+                "/api/analyze": lambda: e.analyze(d["id"]),
                 "/api/library/delete": lambda: e.delete_game(d["id"]),
                 "/api/record": lambda: e.toggle_recording(),
             }

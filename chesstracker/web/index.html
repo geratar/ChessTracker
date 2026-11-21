@@ -117,7 +117,10 @@
   <section id="library" class="view">
     <div class="play">
       <div class="boardcol">
-        <div class="boardwrap"><img id="replayImg" alt="replay board"></div>
+        <div class="analysisrow">
+          <div class="evalbar hidden" id="evalBar"><div id="evalFill"></div><span id="evalText"></span></div>
+          <div class="boardwrap"><img id="replayImg" alt="replay board"></div>
+        </div>
         <div class="replaynav">
           <button id="rFirst">⏮</button><button id="rPrev">◀</button>
           <span id="rPos">-</span>
@@ -128,6 +131,13 @@
       <div class="side">
         <h2>Saved games</h2>
         <div id="gameList" class="gamelist"><p class="hint">No saved games yet.</p></div>
+        <div class="analysisbox" id="analysisBox">
+          <button id="analyzeBtn" class="primary">♟ Analyze with Stockfish</button>
+          <div class="progress hidden" id="anaProgress"><div id="anaFill"></div></div>
+          <p class="hint" id="anaMsg"></p>
+          <svg id="evalGraph" class="hidden" viewBox="0 0 400 100" preserveAspectRatio="none"></svg>
+          <p id="bestLine" class="best"></p>
+        </div>
         <div id="replayMoves" class="moves"></div>
         <div class="buttons"><button id="copyPgn" class="ghost">Copy PGN</button>
           <button id="deleteGame" class="ghost danger">Delete game</button></div>
@@ -149,8 +159,26 @@
 <dialog id="saveDlg">
   <h2>Save game</h2>
   <label>Name <input id="gameName" placeholder="e.g. Saturday game vs Anna"></label>
+  <p>Result</p>
+  <div class="results" id="results">
+    <label><input type="radio" name="result" value="1-0"> White won</label>
+    <label><input type="radio" name="result" value="0-1"> Black won</label>
+    <label><input type="radio" name="result" value="1/2-1/2"> Draw</label>
+    <label><input type="radio" name="result" value="*" checked> Not finished</label>
+  </div>
   <p class="hint">The date is added automatically.</p>
   <div class="nav"><button id="cancelSave" class="ghost">Cancel</button><button id="doSave" class="primary">Save</button></div>
+</dialog>
+
+<!-- Unsaved game dialog -->
+<dialog id="unsavedDlg">
+  <h2>Save this game?</h2>
+  <p id="unsavedText">This game has moves that aren't saved yet.</p>
+  <div class="nav">
+    <button id="unsavedCancel" class="ghost">Cancel</button>
+    <button id="unsavedDiscard" class="ghost">Don't save</button>
+    <button id="unsavedSave" class="primary">Save game</button>
+  </div>
 </dialog>
 
 <footer>Piece set "cburnett" by Colin M.L. Burnett (CC BY-SA 3.0), via python-chess.</footer>

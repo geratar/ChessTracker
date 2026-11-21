@@ -16,7 +16,10 @@ async function api(path, body) {
 const post = (path, body = {}) => api(path, body);
 
 // ---------------- tabs ----------------
-function showTab(name) {
+function showTab(name, force) {
+  const current = document.querySelector(".view.active").id;
+  if (!force && current === "play" && name !== "play" && S && S.unsaved)
+    return guardUnsaved("You're leaving the game. Save it first? (It stays open on the Play tab either way.)", () => showTab(name, true));
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === name));
   if (name === "library") loadLibrary();
@@ -66,7 +69,8 @@ $("calibArea").addEventListener("mousedown", (e) => {
 });
 window.addEventListener("mousemove", (e) => { if (dragIdx !== null) { corners[dragIdx] = imgPoint(e); sendCorners(); } });
 window.addEventListener("mouseup", () => { dragIdx = null; });
-$("startBtn").onclick = async () => { await post("/api/tracking/start"); showTab("play"); };
+$("startBtn").onclick = () => guardUnsaved("Starting tracking begins a new game. Save the current one first?",
+  async () => { await post("/api/tracking/start"); showTab("play", true); });
 
 // ---------------- play ----------------
 let boardKey = "";
@@ -78,11 +82,14 @@ function renderBoard() {
   if (S.lastmove) q.set("lastmove", S.lastmove);
   $("boardImg").src = "/api/board.svg?" + q;
 }
-function renderMoves(el, sans, current, onClick) {
+const MARK_CLASS = { "??": "mark-qq", "?": "mark-q", "?!": "mark-qe" };
+function renderMoves(el, sans, current, onClick, marks) {
   el.innerHTML = "";
   sans.forEach((san, i) => {
     if (i % 2 === 0) { const n = document.createElement("span"); n.className = "n"; n.textContent = (i / 2 + 1) + "."; el.appendChild(n); }
     const s = document.createElement("span"); s.className = "mv" + (i === current ? " cur" : ""); s.textContent = san;
+    const mk = marks && marks[i] && marks[i].mark;
+    if (mk) { const m = document.createElement("span"); m.className = MARK_CLASS[mk]; m.textContent = mk; s.appendChild(m); }
     if (onClick) s.onclick = () => onClick(i + 1);
     el.appendChild(s);
   });
@@ -148,11 +155,39 @@ $("recBtn").onclick = async () => {
   const r = await post("/api/record");
   if (!r.recording) alert("Video saved:\n" + r.file + "\n\nYou'll find it in the ChessTracker folder, inside data > recordings.");
 };
-$("newBtn").onclick = () => { if (confirm("Start a new game? Set up the pieces in the starting position.")) post("/api/new_game"); };
+$("newBtn").onclick = () => guardUnsaved("Start a new game? Save this one first?", () => {
+  if (S.unsaved || confirm("Start a new game? Set up the pieces in the starting position.")) post("/api/new_game");
+});
 $("flipBtn").onclick = () => post("/api/settings", { flipped: !S.settings.flipped });
-$("saveBtn").onclick = () => { if (!S.moves.length) return alert("No moves to save yet."); $("gameName").value = ""; $("saveDlg").showModal(); };
-$("cancelSave").onclick = () => $("saveDlg").close();
-$("doSave").onclick = async () => { await post("/api/library/save", { name: $("gameName").value }); $("saveDlg").close(); $("status").textContent = "Game saved to the Library."; };
+let afterSave = null;
+function openSave(then) {
+  if (!S.moves.length) return alert("No moves to save yet.");
+  afterSave = then || null;
+  $("gameName").value = "";
+  const r = document.querySelector(`input[name=result][value="${S.outcome}"]`) || document.querySelector('input[name=result][value="*"]');
+  r.checked = true;
+  $("saveDlg").showModal();
+}
+$("saveBtn").onclick = () => openSave();
+$("cancelSave").onclick = () => { afterSave = null; $("saveDlg").close(); };
+$("doSave").onclick = async () => {
+  const result = document.querySelector("input[name=result]:checked").value;
+  await post("/api/library/save", { name: $("gameName").value, result });
+  $("saveDlg").close(); $("status").textContent = "Game saved to the Library.";
+  S.unsaved = false;
+  const then = afterSave; afterSave = null; if (then) then();
+};
+
+// ask before an unsaved game could be lost
+let unsavedThen = null;
+function guardUnsaved(text, proceed) {
+  if (!S || !S.unsaved) return proceed();
+  unsavedThen = proceed; $("unsavedText").textContent = text; $("unsavedDlg").showModal();
+}
+$("unsavedCancel").onclick = () => { unsavedThen = null; $("unsavedDlg").close(); };
+$("unsavedDiscard").onclick = () => { const p = unsavedThen; unsavedThen = null; $("unsavedDlg").close(); if (p) p(); };
+$("unsavedSave").onclick = () => { const p = unsavedThen; unsavedThen = null; $("unsavedDlg").close(); openSave(p); };
+window.addEventListener("beforeunload", (e) => { if (S && S.unsaved) { e.preventDefault(); e.returnValue = ""; } });
 
 // ---------------- settings ----------------
 $("settingsBtn").onclick = () => {
@@ -176,22 +211,89 @@ async function loadLibrary() {
   const el = $("gameList"); el.innerHTML = games.length ? "" : '<p class="hint">No saved games yet. Use "Save game" while playing.</p>';
   games.forEach(g => {
     const d = document.createElement("div"); d.className = "g" + (game && game.id === g.id ? " sel" : "");
-    d.innerHTML = `<b></b><small>${g.date} ${g.time} · ${g.moves} moves</small>`; d.querySelector("b").textContent = g.name;
+    const res = { "1-0": "1-0", "0-1": "0-1", "1/2-1/2": "½-½" }[g.result] || "";
+    d.innerHTML = `<span class="res">${res}</span><b></b><small>${g.date} ${g.time} · ${g.moves} moves</small>`; d.querySelector("b").textContent = g.name;
     d.onclick = () => openGame(g.id); el.appendChild(d);
   });
 }
+let ana = null, anaTimer = null;
 async function openGame(id) {
-  game = await api("/api/game?id=" + encodeURIComponent(id)); ply = game.plies.length - 1; renderReplay(); loadLibrary();
+  game = await api("/api/game?id=" + encodeURIComponent(id)); ply = game.plies.length - 1;
+  ana = null; clearTimeout(anaTimer); $("anaMsg").textContent = ""; $("analyzeBtn").classList.remove("hidden");
+  await pollAnalysis(false);
+  renderReplay(); loadLibrary();
 }
+async function pollAnalysis(keepGoing) {
+  if (!game) return;
+  const id = game.id;
+  const st = await api("/api/analysis?id=" + encodeURIComponent(id));
+  if (!game || game.id !== id) return;
+  const prog = $("anaProgress");
+  if (st.state === "done") {
+    ana = st.result; prog.classList.add("hidden"); $("analyzeBtn").classList.add("hidden"); $("anaMsg").textContent = "";
+    renderReplay();
+  } else if (st.state === "running" || st.state === "downloading") {
+    prog.classList.remove("hidden"); $("anaFill").style.width = Math.round((st.progress || 0) * 100) + "%";
+    $("anaMsg").textContent = st.message || ""; $("analyzeBtn").classList.add("hidden");
+    anaTimer = setTimeout(() => pollAnalysis(true), 500);
+  } else if (st.state === "error") {
+    prog.classList.add("hidden"); $("analyzeBtn").classList.remove("hidden"); $("anaMsg").textContent = st.message;
+  } else { prog.classList.add("hidden"); $("analyzeBtn").classList.remove("hidden"); }
+}
+$("analyzeBtn").onclick = async () => {
+  if (!game) return alert("Open a saved game first.");
+  await post("/api/analyze", { id: game.id }); $("anaMsg").textContent = "Starting..."; pollAnalysis(true);
+};
+function evalText(e) {
+  if (e.mate !== null && e.mate !== undefined) return (e.mate > 0 ? "M" : "-M") + Math.abs(e.mate);
+  if (Math.abs(e.cp) >= 10000) return e.cp > 0 ? "1-0" : "0-1";
+  return (e.cp > 0 ? "+" : "") + (e.cp / 100).toFixed(1);
+}
+function renderAnalysis() {
+  const bar = $("evalBar"), graph = $("evalGraph");
+  if (!ana) { bar.classList.add("hidden"); graph.classList.add("hidden"); $("bestLine").textContent = ""; return; }
+  const e = ana.evals[ply], flipped = S.settings.flipped;
+  bar.classList.remove("hidden"); graph.classList.remove("hidden");
+  const clamp = Math.max(-1000, Math.min(1000, e.cp)), whiteShare = 50 + clamp / 20;
+  $("evalFill").style.height = (flipped ? 100 - whiteShare : whiteShare) + "%";
+  $("evalFill").style.background = flipped ? "#2b2b2b" : "#f0f0f0";
+  bar.style.background = flipped ? "#f0f0f0" : "#2b2b2b";
+  const t = $("evalText"); t.textContent = evalText(e);
+  const whiteTop = flipped; t.style.top = (e.cp >= 0) === whiteTop ? "4px" : ""; t.style.bottom = (e.cp >= 0) === whiteTop ? "" : "4px";
+  // graph
+  const n = ana.evals.length, W = 400, Hh = 100;
+  const y = (cp) => Hh / 2 - Math.max(-1000, Math.min(1000, cp)) / 1000 * (Hh / 2 - 4);
+  const pts = ana.evals.map((v, i) => `${(i / Math.max(1, n - 1) * W).toFixed(1)},${y(v.cp).toFixed(1)}`);
+  const area = `0,${Hh} ${pts.join(" ")} ${W},${Hh}`;
+  const cx = ply / Math.max(1, n - 1) * W;
+  let dots = "";
+  ana.moves.forEach((m, i) => { if (m.mark === "??" || m.mark === "?") dots += `<circle cx="${((i + 1) / Math.max(1, n - 1) * W).toFixed(1)}" cy="${y(ana.evals[i + 1].cp).toFixed(1)}" r="3" fill="${m.mark === "??" ? "#e05a4f" : "#e6a23c"}"/>`; });
+  graph.innerHTML = `<rect x="0" y="0" width="${W}" height="${Hh}" fill="#3c3a37"/><polygon points="${area}" fill="#f0f0f0"/>` +
+    `<line x1="0" y1="${Hh / 2}" x2="${W}" y2="${Hh / 2}" stroke="#888" stroke-width="0.5"/>` +
+    `<line x1="${cx}" y1="0" x2="${cx}" y2="${Hh}" stroke="#81b64c" stroke-width="2"/>` + dots;
+  // best move text
+  const mv = ply > 0 ? ana.moves[ply - 1] : null;
+  let txt = `Evaluation ${evalText(e)}.`;
+  if (mv && mv.mark) txt += ` ${game.plies[ply].san}${mv.mark} lost ${(mv.loss / 100).toFixed(1)} pawns; best was ${mv.best_san}.`;
+  if (e.best_san) txt += ` Best now: ${e.best_san}` + (e.pv ? ` (${e.pv})` : "");
+  $("bestLine").textContent = txt;
+}
+$("evalGraph").onclick = (ev) => {
+  if (!ana || !game) return;
+  const r = ev.currentTarget.getBoundingClientRect();
+  go(Math.round((ev.clientX - r.left) / r.width * (game.plies.length - 1)));
+};
 function renderReplay() {
   if (!game) return;
   const p = game.plies[ply];
   const q = new URLSearchParams({ fen: p.fen, theme: S.settings.theme, flipped: S.settings.flipped });
   if (p.uci) q.set("lastmove", p.uci);
+  if (ana && ana.evals[ply] && ana.evals[ply].best) q.set("arrow", ana.evals[ply].best);
   $("replayImg").src = "/api/board.svg?" + q;
   $("rPos").textContent = `${ply} / ${game.plies.length - 1}`;
   const el = $("replayMoves"); el.classList.add("replay");
-  renderMoves(el, game.plies.slice(1).map(x => x.san), ply - 1, (n) => { ply = n; renderReplay(); });
+  renderMoves(el, game.plies.slice(1).map(x => x.san), ply - 1, (n) => { ply = n; renderReplay(); }, ana && ana.moves);
+  renderAnalysis();
 }
 const go = (n) => { if (game) { ply = Math.max(0, Math.min(game.plies.length - 1, n)); renderReplay(); } };
 $("rFirst").onclick = () => go(0); $("rLast").onclick = () => go(1e9);
@@ -208,7 +310,7 @@ window.addEventListener("keydown", (e) => {
 });
 $("copyPgn").onclick = () => { if (game) navigator.clipboard.writeText(game.pgn); };
 $("deleteGame").onclick = async () => {
-  if (game && confirm(`Delete "${game.name}"?`)) { await post("/api/library/delete", { id: game.id }); game = null; $("replayImg").removeAttribute("src"); $("replayMoves").innerHTML = ""; loadLibrary(); }
+  if (game && confirm(`Delete "${game.name}"?`)) { await post("/api/library/delete", { id: game.id }); game = null; ana = null; renderAnalysis(); $("replayImg").removeAttribute("src"); $("replayMoves").innerHTML = ""; loadLibrary(); }
 };
 
 // ---------------- polling ----------------

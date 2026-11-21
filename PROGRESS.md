@@ -46,6 +46,13 @@
   hidden zone of moved pieces cost ~nothing; expected squares hidden behind other pieces cost less
   when unchanged. `piece_height` setting (square widths, default 1.6). 51 tests pass.
 
+## Phase 5-ish + library polish (11:00)
+- Save with result (1-0 / 0-1 / draw / unfinished), unsaved-game guard (tab change, new game,
+  start tracking, closing the browser tab).
+- Stockfish analysis in the Library: auto-download, eval bar, graph, ?!/?/?? marks, best-move arrow.
+  Download path untested from a Mac (sandbox blocks GitHub downloads); asset selection unit-tested.
+- 57 tests pass.
+
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,

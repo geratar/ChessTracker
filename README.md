@@ -21,8 +21,13 @@ Windows: double-click **ChessTracker.bat** instead.
     of the real move on the digital board.
   - **Enter a move**: the camera missed a move: click it on the board.
   - **Undo** takes back the last move (put the pieces back too). **Flip board** puts Black at the bottom.
-  - **Save game** stores it in the Library with a name and today's date.
+  - **Save game** stores it in the Library with a name, the result (who won / draw) and today's date.
+    If you leave the game or start a new one with unsaved moves, the app asks whether to save first.
 - **Library**: open a saved game, step through it with the arrows (or keyboard left/right), Auto-play, copy the PGN.
+  **Analyze with Stockfish** evaluates every position: evaluation bar, evaluation graph (click to jump),
+  ?! / ? / ?? marks on inaccuracies, mistakes and blunders, and an arrow for the best move.
+  The first time, Stockfish (free, GPL-3) is downloaded automatically from its official GitHub releases
+  into `data/engine/`; nothing to install.
 - **Settings**: board style (brown, blue, green) and orientation.
 
 Tips: mount the camera high and steady, ideally not on the same table as the board, let the

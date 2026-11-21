@@ -13,6 +13,7 @@ import chess.pgn
 import cv2
 import numpy as np
 
+from .analysis import Analyzer
 from .calibration import Calibration, orientation_check
 from .camera import FrameSource, list_cameras
 from .config import load_config, resolve
@@ -74,6 +75,8 @@ class Engine:
         self.rec_path = None
         self.debug_path = data_dir / "debug.log"
         self.data_dir = data_dir
+        self.saved_plies = 0           # moves already saved to the library
+        self.analyzer = Analyzer(data_dir / "engine", self.library_dir)
         self.running = True
         self.thread = threading.Thread(target=self._loop, daemon=True)
         self._open_camera(source if source is not None else self.camera_index)
@@ -135,6 +138,7 @@ class Engine:
                 raise ValueError("Calibrate the board first")
             board = chess.Board(fen) if fen else chess.Board()
             self.tracker = Tracker(cal, self.cfg, board)
+            self.saved_plies = 0
             self.tracker.debug = self._debug
             self._debug(f"--- start tracking fen={board.fen()} corners={cal.corners} rot={cal.rotation} "
                         f"frame={self.frame_size}")
@@ -259,12 +263,15 @@ class Engine:
                 self._save_settings(flipped=bool(flipped))
 
     # --- library -----------------------------------------------------------------
-    def save_game(self, name):
+    def save_game(self, name, result="*"):
         with self.lock:
             if not self.tracker:
                 raise ValueError("No game to save")
+            if result not in ("1-0", "0-1", "1/2-1/2", "*"):
+                raise ValueError(f"Unknown result {result}")
             board = self.tracker.board
             game = chess.pgn.Game.from_board(board)
+            game.headers["Result"] = result
             name = (name or "").strip() or "Untitled game"
             game.headers["Event"] = name
             game.headers["Date"] = time.strftime("%Y.%m.%d")
@@ -273,10 +280,13 @@ class Engine:
             safe = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in name).strip()[:40]
             path = self.library_dir / f"{time.strftime('%Y%m%d_%H%M%S')}_{safe}.pgn"
             path.write_text(str(game) + "\n")
+            self.saved_plies = len(board.move_stack)
             return path.name
 
     def list_games(self):
         out = []
+        if not self.library_dir.exists():
+            return []
         for p in sorted(self.library_dir.glob("*.pgn"), reverse=True):
             with open(p) as f:
                 g = chess.pgn.read_game(f)
@@ -285,7 +295,8 @@ class Engine:
             out.append({"id": p.name, "name": g.headers.get("Event", p.stem),
                         "date": g.headers.get("Date", "?").replace(".", "-"),
                         "time": g.headers.get("Time", ""),
-                        "moves": len(list(g.mainline_moves()))})
+                        "moves": len(list(g.mainline_moves())),
+                        "result": g.headers.get("Result", "*")})
         return out
 
     def load_game(self, game_id):
@@ -301,12 +312,23 @@ class Engine:
             board.push(m)
             plies.append({"fen": board.fen(), "san": san, "uci": m.uci()})
         return {"id": game_id, "name": g.headers.get("Event", ""), "date": g.headers.get("Date", ""),
-                "pgn": str(g), "plies": plies}
+                "result": g.headers.get("Result", "*"), "pgn": str(g), "plies": plies}
+
+    def analyze(self, game_id):
+        g = self.load_game(game_id)
+        self.analyzer.start(game_id, [p["fen"] for p in g["plies"]])
+
+    def analysis(self, game_id):
+        self.load_game(game_id)   # validates the id
+        return self.analyzer.status(game_id)
 
     def delete_game(self, game_id):
         p = (self.library_dir / game_id).resolve()
         if p.parent == self.library_dir.resolve() and p.exists():
             p.unlink()
+            a = self.analyzer.result_path(game_id)
+            if a.exists():
+                a.unlink()
 
     # --- state for the UI ---------------------------------------------------------
     def state(self):
@@ -333,6 +355,8 @@ class Engine:
                 "still": bool(t and t.gate.is_stable(time.monotonic())),
                 "settings": self.settings,
                 "recording": self.writer is not None,
+                "unsaved": bool(t and len(t.board.move_stack) > self.saved_plies),
+                "outcome": board.result() if board.is_game_over() else "*",
                 "themes": list(THEMES),
             }
 

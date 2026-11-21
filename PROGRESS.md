@@ -146,6 +146,8 @@
   (player boxes still show whose turn); Play/Library fit the window (board sized by JS `fitViews`, no page
   scroll); Profiles tab with per-player stats (`/api/profiles`: W/D/L, win/score %, by colour,
   head-to-head, streak, favourite first moves, recent games). Games now store WhiteId/BlackId. 87 tests.
+- Library list: players are the title, the game name (optional, no more "Untitled game") a muted subtitle;
+  renaming to empty clears it. Move counts are full moves.
 
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.

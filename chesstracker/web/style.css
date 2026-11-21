@@ -99,8 +99,10 @@ footer { color:#6e6c69; font-size:11px; padding:10px 20px; }
 .variation #varMoves span.cur { background:var(--accent); color:#fff; }
 img.av { width:28px; height:28px; border-radius:7px; vertical-align:middle; }
 .who { display:flex; align-items:center; gap:8px; }
-.vs { display:flex; align-items:center; gap:5px; margin-top:4px; color:var(--text); font-size:13px; }
-.vs img.av { width:20px; height:20px; border-radius:5px; }
+.vs { display:flex; align-items:center; gap:6px; color:var(--text); font-size:15px; font-weight:600; }
+.vs small { font-weight:400; color:var(--muted); display:inline !important; }
+.vs img.av { width:24px; height:24px; border-radius:6px; }
+.gname { color:var(--muted); font-size:13px; font-style:italic; margin-top:3px; }
 #playersDlg { width:min(640px, 94vw); }
 .pickrow { display:flex; gap:12px; align-items:flex-start; }
 .pickside { flex:1; }

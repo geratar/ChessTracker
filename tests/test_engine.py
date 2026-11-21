@@ -113,10 +113,13 @@ def test_rename_keeps_moves_and_result(engine):
     engine.rename_game(gid, "Club night vs Anna")
     g = engine.load_game(gid)
     assert g["name"] == "Club night vs Anna" and g["result"] == "0-1" and g["plies"][1]["san"] == "d4"
-    with pytest.raises(ValueError):
-        engine.rename_game(gid, "  ")
+    engine.rename_game(gid, "  ")                     # clears the name
+    assert engine.load_game(gid)["name"] == ""
     with pytest.raises(ValueError):
         engine.rename_game("../x.pgn", "a")
+    engine.start_tracking()
+    unnamed = engine.save_game("")
+    assert engine.load_game(unnamed)["name"] == "" and "Untitled" not in engine.load_game(unnamed)["pgn"]
 
 
 def test_corners_follow_a_higher_camera_resolution(tmp_path):

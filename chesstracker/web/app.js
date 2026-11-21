@@ -391,8 +391,9 @@ async function loadLibrary() {
     const d = document.createElement("div"); d.className = "g" + (game && game.id === g.id ? " sel" : "");
     const res = { "1-0": "1-0", "0-1": "0-1", "1/2-1/2": "½-½" }[g.result] || "";
     const who = (p, fallback) => p ? `${avatarImg(p.avatar)}<span>${esc(p.name)}</span>` : `${avatarImg(null)}<span>${fallback}</span>`;
-    const vs = g.white || g.black ? `<div class="vs">${who(g.white, "Anonymous")}<small>vs</small>${who(g.black, "Anonymous")}</div>` : "";
-    d.innerHTML = `<span class="res">${res}</span><b></b>${vs}<small>${g.date} ${g.time} · ${g.moves} moves</small>`; d.querySelector("b").textContent = g.name;
+    // players are the title; a name, if given, is a quiet subtitle
+    d.innerHTML = `<span class="res">${res}</span><div class="vs">${who(g.white, "Anonymous")}<small>vs</small>${who(g.black, "Anonymous")}</div>` +
+      (g.name ? `<div class="gname">${esc(g.name)}</div>` : "") + `<small>${g.date} ${g.time} · ${Math.ceil(g.moves / 2)} move${Math.ceil(g.moves / 2) === 1 ? "" : "s"}</small>`;
     d.onclick = () => openGame(g.id); el.appendChild(d);
   });
 }
@@ -577,14 +578,14 @@ window.addEventListener("keydown", (e) => {
 });
 $("renameGame").onclick = async () => {
   if (!game) return alert("Open a saved game first.");
-  const name = prompt("New name for this game:", game.name);
-  if (name === null || !name.trim()) return;
+  const name = prompt("Name for this game (leave empty for no name):", game.name);
+  if (name === null) return;
   await post("/api/library/rename", { id: game.id, name: name.trim() });
   game.name = name.trim(); loadLibrary();
 };
 $("copyPgn").onclick = () => { if (game) navigator.clipboard.writeText(game.pgn); };
 $("deleteGame").onclick = async () => {
-  if (game && confirm(`Delete "${game.name}"?`)) { await post("/api/library/delete", { id: game.id }); game = null; ana = null; renderAnalysis(); $("replayImg").removeAttribute("src"); $("replayMoves").innerHTML = ""; loadLibrary(); }
+  if (game && confirm(`Delete ${game.name ? `"${game.name}"` : "this game"}?`)) { await post("/api/library/delete", { id: game.id }); game = null; ana = null; renderAnalysis(); $("replayImg").removeAttribute("src"); $("replayMoves").innerHTML = ""; loadLibrary(); }
 };
 
 // ---------------- profiles ----------------
@@ -616,7 +617,7 @@ function renderProfile() {
   const col = (side, c) => `<tr><td>${side === "white" ? "♔ White" : "♚ Black"}</td><td>${c.games}</td><td>${c.wins}</td><td>${c.draws}</td><td>${c.losses}</td><td>${pct(c.wins, c.wins + c.draws + c.losses)}</td><td>${bar(c.wins, c.draws, c.losses)}</td></tr>`;
   const opps = p.opponents.map(o => `<tr><td class="who">${avatarImg(o.avatar)}<span>${esc(o.name)}</span></td><td>${o.games}</td><td>${o.wins}</td><td>${o.draws}</td><td>${o.losses}</td><td>${pct(o.wins, o.wins + o.draws + o.losses)}</td><td>${bar(o.wins, o.draws, o.losses)}</td></tr>`).join("");
   const res = { win: "Won", loss: "Lost", draw: "Draw", unfinished: "Not finished" };
-  const recent = p.recent.map((g, i) => `<div class="g" data-i="${i}"><span class="res r-${g.result}">${res[g.result]}</span><b>${esc(g.name)}</b><small>${g.date} · ${g.colour === "white" ? "White" : "Black"} vs ${esc(g.opponent)} · ${plural(Math.ceil(g.moves / 2), "move")}</small></div>`).join("");
+  const recent = p.recent.map((g, i) => `<div class="g" data-i="${i}"><span class="res r-${g.result}">${res[g.result]}</span><b>vs ${esc(g.opponent)}</b>${g.name ? `<div class="gname">${esc(g.name)}</div>` : ""}<small>${g.date} · as ${g.colour === "white" ? "White" : "Black"} · ${plural(Math.ceil(g.moves / 2), "move")}</small></div>`).join("");
   box.innerHTML = `
     <div class="phead">${avatarImg(p.avatar)}<div><h2>${esc(p.name)}</h2><small>${p.games ? `Played ${p.first === p.last ? "on " + p.first : `from ${p.first} to ${p.last}`}` : "No games yet"}</small></div>
       <button id="editProfile" class="ghost">✎ Edit</button></div>

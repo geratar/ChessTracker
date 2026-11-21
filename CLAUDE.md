@@ -14,6 +14,7 @@ No neural nets, paid APIs, databases or frameworks unless simpler methods demons
 - `chesstracker/camera.py`: `FrameSource` (camera index, video file or image; auto-reconnect; video loops)
 - `chesstracker/calibration.py`: 4 corners -> homography -> top-down image, square geometry, JSON save/load
 - `chesstracker/overlay.py`: debug drawing
+- `chesstracker/moves.py`: legal-move matching from a set of changed squares (accept / ambiguous / no_move / promotion)
 - `calibrate.py`: Phase 1 OpenCV-window app
 - `tests/`: pytest, synthetic frames (no camera needed)
 

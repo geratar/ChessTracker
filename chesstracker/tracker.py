@@ -22,7 +22,8 @@ TRACKER_DEFAULTS = {
     "min_change_score": 18.0,
     "median_factor": 3.0,
     "rel_to_max": 0.4,
-    "strong_single_factor": 2.0,   # one square changed this strongly => probably a move, ask
+    "strong_single_factor": 2.0,
+    "piece_height": 1.6,           # tallest piece height in square widths (0 = ignore camera geometry)   # one square changed this strongly => probably a move, ask
 }
 
 
@@ -43,6 +44,7 @@ class Tracker:
         self.s = s
         self.board = board if board is not None else chess.Board()
         self.aligner = Aligner(cal)
+        self.shadows = cal.shadow_map(s["piece_height"]) if s["piece_height"] > 0 else None
         self.gate = MotionGate(s["motion_threshold"], s["stable_seconds"])
         self.ref_feats = None          # board image of the last confirmed position
         self.ref_history = []          # earlier reference images, for undo
@@ -104,7 +106,7 @@ class Tracker:
             return self._report(events, Event("obstructed", t,
                                 f"{len(changed)} squares changed: hand, shadow or moved board? Waiting.",
                                 squares=set(changed)))
-        result = match_move(self.board, changed)
+        result = match_move(self.board, changed, shadows=self.shadows)
         if result.status == ACCEPT:
             events.append(self._apply([result.move], feats, t))
         elif result.status in (AMBIGUOUS, PROMOTION, TWO_MOVES):
@@ -128,8 +130,9 @@ class Tracker:
             self.unchanged_since = self.unchanged_since or t
         else:
             self._report(events, Event("unrecognized", t,
-                         "Squares changed but no legal move matches: " +
-                         " ".join(chess.square_name(q) for q in sorted(changed)), squares=set(changed)))
+                         "Couldn't work out the move (changes seen on " +
+                         " ".join(chess.square_name(q) for q in sorted(changed)) +
+                         "). If you moved a piece, use 'Enter a move'.", squares=set(changed)))
         return events
 
     def describe(self, candidate):

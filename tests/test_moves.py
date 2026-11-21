@@ -106,3 +106,41 @@ def test_candidates_for_single_square():
     from chesstracker.moves import candidates_for_square
     c = candidates_for_square(chess.Board(), S("c4"))
     assert [x.move.uci() for x in c] == ["c2c4"]
+
+
+# --- camera geometry (tall pieces hide the squares behind them) -------------
+from pathlib import Path as _P
+from chesstracker.calibration import Calibration as _Cal
+
+_SHADOWS = _Cal.load(_P(__file__).parent / "fixtures" / "game1" / "calibration.json").shadow_map()
+
+
+def test_shadow_map_points_away_from_camera():
+    # In the user's first setup the camera sat at White's left: pieces lean toward the a-file / rank 8
+    assert {S("d2"), S("d3")} <= _SHADOWS[S("e2")]
+    assert S("f2") not in _SHADOWS[S("e2")]
+
+
+def test_knight_move_with_occlusion_extras_found_with_geometry():
+    b = chess.Board()
+    # g1-f3 and every square the knight hides changed: without geometry nothing matches,
+    # with geometry Nf3 is the top candidate (accepted or offered first)
+    changed = {S("g1"), S("f3")} | _SHADOWS[S("f3")] | _SHADOWS[S("g1")]
+    without = match_move(b, changed, allow_two=False)
+    with_geo = match_move(b, changed, shadows=_SHADOWS, allow_two=False)
+    assert without.status == "no_move"
+    assert with_geo.status in ("accept", "ambiguous") and b.san(with_geo.candidates[0].move) == "Nf3"
+
+
+def test_typical_occlusion_accepted():
+    b = chess.Board()
+    # e2-e4 plus one hidden square behind e4 and one behind e2
+    changed = {S("e2"), S("e4")} | set(list(_SHADOWS[S("e4")])[:1]) | set(list(_SHADOWS[S("e2")])[:1])
+    r = match_move(b, changed, shadows=_SHADOWS)
+    assert r.status == "accept" and b.san(r.move) == "e4"
+
+
+def test_geometry_does_not_invent_moves_from_shadow_only():
+    # only shadow squares changed (e.g. a hand's shadow): still no move
+    r = match_move(chess.Board(), _SHADOWS[S("e4")], shadows=_SHADOWS)
+    assert r.status != "accept"

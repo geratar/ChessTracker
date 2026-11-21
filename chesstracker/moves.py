@@ -51,8 +51,13 @@ def _near(sq, squares):
     return any(chess.square_distance(sq, e) == 1 for e in squares)
 
 
+def _occupied(board):
+    return {sq for sq in chess.SQUARES if board.piece_at(sq)}
+
+
 def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, min_score=1.5,
-               min_margin=1.0, max_candidates=5, allow_two=True):
+               min_margin=1.0, max_candidates=5, allow_two=True, shadows=None,
+               w_extra_shadow=0.05, w_missing_hidden=0.4):
     """Rank legal moves by how well they explain `changed` (iterable of squares).
 
     score = matched - w_missing * missing - w_extra * extra
@@ -60,6 +65,10 @@ def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, mi
       missing: expected squares that did NOT change
       extra:   changed squares the move doesn't explain (occlusion, shadows);
                ones next to an expected square cost less (tall pieces hide neighbours)
+    With `shadows` (from Calibration.shadow_map) the camera geometry is used:
+      - changes on squares hidden behind a moved piece cost almost nothing
+      - an expected square that is hidden behind another piece (before and after)
+        costs less when it shows no change
     Accept only when the best move scores >= min_score AND beats the runner-up
     by >= min_margin; otherwise ask the user.
     """
@@ -67,14 +76,31 @@ def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, mi
     if len(changed) < 2:
         return MatchResult(NO_MOVE)
 
+    occ_before = _occupied(board) if shadows else set()
+    hidden_before = set().union(*(shadows[q] for q in occ_before)) if shadows else set()
+
     def score(moves):
-        exp = expected_changes(board, *moves)
+        after = board.copy(stack=False)
+        for m in moves:
+            after.push(m)
+        exp = changes_between(board, after)
         matched = len(exp & changed)
-        missing = len(exp - changed)
+        missing_sq = exp - changed
         extras = changed - exp
-        near = sum(1 for q in extras if _near(q, exp))
-        s = matched - w_missing * missing - w_extra * (len(extras) - near) - w_extra_near * near
-        return Candidate(moves[0], s, matched, missing, len(extras), list(moves))
+        if shadows:
+            occ_after = _occupied(after)
+            casters = (exp | set()) & (occ_before | occ_after)
+            zone = set().union(*(shadows[q] for q in casters)) if casters else set()
+            hidden_after = set().union(*(shadows[q] for q in occ_after))
+            hidden = {q for q in missing_sq if q in hidden_before and q in hidden_after}
+        else:
+            zone, hidden = set(), set()
+        in_zone = extras & zone
+        near = {q for q in extras - in_zone if _near(q, exp)}
+        far = extras - in_zone - near
+        s = (matched - w_missing * (len(missing_sq) - len(hidden)) - w_missing_hidden * len(hidden)
+             - w_extra * len(far) - w_extra_near * len(near) - w_extra_shadow * len(in_zone))
+        return Candidate(moves[0], s, matched, len(missing_sq), len(extras), list(moves))
 
     scored = [score([mv]) for mv in board.legal_moves]
 

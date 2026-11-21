@@ -40,6 +40,12 @@
 - Change threshold lowered 25 -> 18 for smaller/farther boards (first clip still exact).
 - Added Record video button and data/debug.log (every decision with top square scores).
 
+## Occlusion handling (10:55)
+- Calibration.shadow_map(): for each square, which squares a standing piece hides (walk up in the
+  camera image from the square centre, map back to the board). Matching uses it: changes in the
+  hidden zone of moved pieces cost ~nothing; expected squares hidden behind other pieces cost less
+  when unchanged. `piece_height` setting (square widths, default 1.6). 51 tests pass.
+
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,

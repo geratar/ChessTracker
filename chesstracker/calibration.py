@@ -84,6 +84,34 @@ class Calibration:
         pts = np.float32([[[i * s, j * s]] for j in range(9) for i in range(9)])
         return cv2.perspectiveTransform(pts, self.inverse_homography()).reshape(9, 9, 2)
 
+    def shadow_map(self, piece_height=1.6, steps=24):
+        """For each square, the other squares a standing piece on it hides from the camera.
+
+        A piece's top appears straight above its base in the camera image, so we
+        walk upward in the image from the square centre (by `piece_height` x the
+        local square size) and map that line back onto the board. Returns
+        {square_index (python-chess numbering): set of square indexes}.
+        """
+        H, Hinv = self.homography(), self.inverse_homography()
+        s = self.square_px
+        out = {}
+        for f in range(8):
+            for r in range(8):
+                cx, cy = (f + 0.5) * s, (7 - r + 0.5) * s
+                pts = cv2.perspectiveTransform(np.float32([[[cx, cy]], [[cx + s, cy]]]), Hinv).reshape(2, 2)
+                base, side = pts[0], pts[1]
+                size_img = float(np.linalg.norm(side - base))
+                line = np.float32([[[base[0], base[1] - size_img * piece_height * k / steps]]
+                                   for k in range(1, steps + 1)])
+                board_pts = cv2.perspectiveTransform(line, H).reshape(-1, 2)
+                hidden = set()
+                for x, y in board_pts:
+                    name = self.square_at(x, y)
+                    if name and name != square_name(f, r):
+                        hidden.add((int(name[1]) - 1) * 8 + FILES.index(name[0]))
+                out[r * 8 + f] = hidden
+        return out
+
     def camera_to_square(self, x, y):
         p = cv2.perspectiveTransform(np.float32([[[x, y]]]), self.homography())[0, 0]
         return self.square_at(*p)

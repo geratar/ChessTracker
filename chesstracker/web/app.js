@@ -224,6 +224,11 @@ $("settingsBtn").onclick = () => {
     box.appendChild(b);
   });
   $("flipSetting").checked = S.settings.flipped;
+  document.querySelectorAll("#speeds button").forEach(b => {
+    b.classList.toggle("sel", b.dataset.speed === (S.settings.speed || "normal"));
+    b.onclick = async () => { await post("/api/settings", { speed: b.dataset.speed });
+      document.querySelectorAll("#speeds button").forEach(x => x.classList.toggle("sel", x === b)); };
+  });
   $("settingsDlg").showModal();
 };
 $("flipSetting").onchange = (e) => post("/api/settings", { flipped: e.target.checked });

@@ -114,7 +114,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/undo": lambda: e.undo(),
                 "/api/move": lambda: e.manual_move(d["move"]),
                 "/api/correct": lambda: e.correct_last(d["move"]),
-                "/api/settings": lambda: e.update_settings(d.get("theme"), d.get("flipped")),
+                "/api/settings": lambda: e.update_settings(d.get("theme"), d.get("flipped"), d.get("speed")),
                 "/api/library/save": lambda: {"id": e.save_game(d.get("name"), d.get("result", "*"))},
                 "/api/analyze": lambda: e.analyze(d["id"]),
                 "/api/library/delete": lambda: e.delete_game(d["id"]),

@@ -122,6 +122,61 @@ class MotionGate:
         return self.still_since is not None and t - self.still_since >= self.stable_seconds
 
 
+class SquareMotion:
+    """Per-square stillness on the top-down board.
+
+    A square counts as settled once nothing has moved on it or next to it for
+    `stable_seconds`. Hands beside the board are ignored entirely, and a hand
+    over one corner of the board doesn't stop a move elsewhere from being read.
+    """
+
+    def __init__(self, threshold=2.0, stable_seconds=0.4, noise_factor=4.0, history=300, size=160):
+        self.base_threshold = threshold
+        self.threshold = threshold
+        self.stable_seconds = stable_seconds
+        self.noise_factor = noise_factor
+        self.history = deque(maxlen=history)
+        self.size = size
+        self.prev = None
+        self.still_since = np.full((8, 8), np.nan)
+        self.motion = np.zeros((8, 8))
+
+    def update(self, warped, t):
+        n = self.size
+        g = self._gray(warped)
+        if self.prev is None or self.prev.shape != g.shape:
+            self.prev = g
+            self.still_since[:] = t
+            return
+        k = n // 8
+        self.motion = np.abs(g - self.prev).reshape(8, k, 8, k).mean(axis=(1, 3))
+        self.prev = g
+        self.history.append(float(np.median(self.motion)))
+        if len(self.history) >= 15:
+            floor = float(np.percentile(self.history, 20))
+            self.threshold = max(self.base_threshold, self.noise_factor * floor)
+        moving = cv2.dilate((self.motion > self.threshold).astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+        self.still_since[moving] = np.nan
+        self.still_since[~moving & np.isnan(self.still_since)] = t
+
+    def _gray(self, warped):
+        n = self.size
+        g = cv2.cvtColor(cv2.resize(warped, (n, n), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY)
+        return cv2.GaussianBlur(g, (3, 3), 0).astype(np.float32)
+
+    def rebase(self, warped):
+        """The picture was re-aligned: compare the next frame with this one."""
+        self.prev = self._gray(warped)
+
+    def settled(self, t):
+        """8x8 bool (row 0 = rank 8, col 0 = file a)."""
+        with np.errstate(invalid="ignore"):
+            return ~np.isnan(self.still_since) & (t - self.still_since >= self.stable_seconds)
+
+    def all_settled(self, t):
+        return bool(self.settled(t).all())
+
+
 def square_features(warped):
     """Per-pixel features used for change detection (L channel and edge strength)."""
     blur = cv2.GaussianBlur(warped, (5, 5), 0)
@@ -129,15 +184,19 @@ def square_features(warped):
     gx = cv2.Sobel(L, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(L, cv2.CV_32F, 0, 1, ksize=3)
     edges = cv2.GaussianBlur(np.sqrt(gx * gx + gy * gy), (9, 9), 0)
-    return L - L.mean(), edges
+    return L, edges
 
 
 def change_scores(feat_a, feat_b, inner=0.8):
     """8x8 array (row 0 = rank 8, col 0 = file a) of change scores between two boards."""
     (La, Ea), (Lb, Eb) = feat_a, feat_b
-    d = np.abs(La - Lb) + np.abs(Ea - Eb)
-    n = d.shape[0]
+    n = La.shape[0]
     s = n // 8
+    dL = La - Lb
+    # Overall brightness drift: the median square's offset. Unlike the mean, a hand
+    # covering part of the board doesn't shift it, so other squares stay comparable.
+    offset = float(np.median(dL[:s * 8, :s * 8].reshape(8, s, 8, s).mean(axis=(1, 3))))
+    d = np.abs(dL - offset) + np.abs(Ea - Eb)
     m = int(s * (1 - inner) / 2)
     return d[:s * 8, :s * 8].reshape(8, s, 8, s)[:, m:s - m, :, m:s - m].mean(axis=(1, 3))
 

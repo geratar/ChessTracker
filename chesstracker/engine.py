@@ -29,7 +29,11 @@ THEMES = {
     "green": {"square light": "#ebecd0", "square dark": "#779556",
               "square light lastmove": "#f5f682", "square dark lastmove": "#b9ca43"},
 }
-SETTINGS_DEFAULTS = {"theme": "green", "flipped": False}
+SETTINGS_DEFAULTS = {"theme": "green", "flipped": False, "speed": "normal"}
+# How long the squares of a move must be still before it is read (seconds).
+SPEEDS = {"fast": {"stable_seconds": 0.25, "confirm_seconds": 0.2},
+          "normal": {"stable_seconds": 0.4, "confirm_seconds": 0.3},
+          "careful": {"stable_seconds": 0.7, "confirm_seconds": 0.5}}
 
 
 def read_json(path, default):
@@ -154,7 +158,7 @@ class Engine:
             if cal is None:
                 raise ValueError("Calibrate the board first")
             board = chess.Board(fen) if fen else chess.Board()
-            self.tracker = Tracker(cal, self.cfg, board)
+            self.tracker = Tracker(cal, self._tracker_settings(), board)
             self.saved_plies = 0
             self.tracker.debug = self._debug
             self._debug(f"--- start tracking fen={board.fen()} corners={cal.corners} rot={cal.rotation} "
@@ -270,8 +274,17 @@ class Engine:
         self.settings_path.parent.mkdir(parents=True, exist_ok=True)
         self.settings_path.write_text(json.dumps(self.settings, indent=2))
 
-    def update_settings(self, theme=None, flipped=None):
+    def _tracker_settings(self):
+        return {**self.cfg, **SPEEDS.get(self.settings.get("speed"), SPEEDS["normal"])}
+
+    def update_settings(self, theme=None, flipped=None, speed=None):
         with self.lock:
+            if speed is not None:
+                if speed not in SPEEDS:
+                    raise ValueError(f"Unknown speed {speed}")
+                self._save_settings(speed=speed)
+                if self.tracker:
+                    self.tracker.set_timing(**SPEEDS[speed])
             if theme is not None:
                 if theme not in THEMES:
                     raise ValueError(f"Unknown theme {theme}")
@@ -383,7 +396,7 @@ class Engine:
                 "moves": self._san_list(board),
                 "pending": pending,
                 "pending_kind": (t.pending.status if t and t.pending else None),
-                "still": bool(t and t.gate.is_stable(time.monotonic())),
+                "still": bool(t and t.is_still(time.monotonic())),
                 "settings": self.settings,
                 "recording": self.writer is not None,
                 "unsaved": bool(t and len(t.board.move_stack) > self.saved_plies),

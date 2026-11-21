@@ -79,6 +79,15 @@
   Python-written files aren't quarantined, so the approval is needed once more, never again.
 - Needs the repo to be public. Restart tested live (Linux); 66 tests pass.
 
+## Fast play, hands near the board (12:10)
+- Stillness is now per square on the top-down board (SquareMotion, 3x3-dilated). Hands beside the
+  board are ignored; a hand over part of the board doesn't block a move elsewhere. With a hand on the
+  board a move is accepted only if it avoids the hand's squares, explains every visible change, and no
+  other legal move could use the hidden squares; else wait (no questions). Under the hand the old
+  reference is kept. Brightness offset now uses the median square (hands don't skew it).
+- Default wait 0.6+0.5 s -> 0.4+0.3 s; Settings: Fast (0.25+0.2) / Normal / Careful (0.7+0.5).
+- Both recordings correct at all three speeds, ~0.7 s quicker. 70 tests pass.
+
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,

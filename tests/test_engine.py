@@ -138,3 +138,12 @@ def test_corners_follow_a_higher_camera_resolution(tmp_path):
         assert s["calibration"]["square_px"] > 0
     finally:
         e.shutdown()
+
+
+def test_speed_setting_changes_tracker_timing(engine):
+    engine.start_tracking()
+    engine.update_settings(speed="fast")
+    assert engine.tracker.s["stable_seconds"] == 0.25 and engine.tracker.motion.stable_seconds == 0.25
+    assert engine.state()["settings"]["speed"] == "fast"
+    with pytest.raises(ValueError):
+        engine.update_settings(speed="warp")

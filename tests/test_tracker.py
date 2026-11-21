@@ -176,16 +176,19 @@ def test_confirm_two_moves(tracker):
     assert tracker.board.fullmove_number == 2
 
 
-def test_missed_move_is_offered_as_pair(tracker):
-    # skip the e4 frame: the tracker sees e4 and d5 at once and must ask, not guess
+def test_missed_move_is_caught_up(tracker):
+    # fast play: the e4 still moment is skipped, so e4 and d5 are seen at once.
+    # Exactly one pair of legal moves explains the strong changes: apply both.
     c = Clock()
     c.feed(tracker, img("00_start"), 1.5)
     c.hand(tracker, img("01_hand_a"), img("01_hand_b"))
     ev = c.feed(tracker, img("04_after_d5"), 2.0)
-    assert "move" not in kinds(ev)
-    asks = [e for e in ev if e.kind == "two_moves"]
-    assert asks and tracker.describe(asks[0].candidates[0]) == "e4 d5"
-    assert tracker.waiting_for_user
+    assert [e.text for e in ev if e.kind == "move"] == ["e4 d5"]
+    assert not tracker.waiting_for_user
+    # and tracking goes on normally from there
+    c.hand(tracker, img("05_hand_a"), img("05_hand_b"))
+    ev = c.feed(tracker, img("06_after_exd5"), 2.0)
+    assert [e.text for e in ev if e.kind == "move"] == ["exd5"]
 
 
 def test_person_moving_beside_the_board_does_not_block_detection(tracker):
@@ -208,3 +211,14 @@ def test_person_moving_beside_the_board_does_not_block_detection(tracker):
         c.t += 1 / FPS
     assert [e.text for e in ev if e.kind == "move"] == ["e4"]
 
+
+
+def test_many_missed_moves_are_reported_not_silent(tracker):
+    # four moves happened with no clear view in between: the tracker must say so
+    c = Clock()
+    c.feed(tracker, img("00_start"), 1.5)
+    c.hand(tracker, img("01_hand_a"), img("01_hand_b"))
+    ev = c.feed(tracker, img("07_after_c6"), 2.0)
+    said = [e for e in ev if e.kind != "ready"]
+    assert said and (said[0].kind in ("lost", "unrecognized", "two_moves", "move"))
+    assert any("Enter a move" in e.text or e.kind in ("two_moves", "move") for e in said)

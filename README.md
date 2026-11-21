@@ -1,4 +1,4 @@
-# Chess Tracker
+# ChessEmeg
 
 Tracks a physical chess game through a webcam and mirrors it on a digital board.
 

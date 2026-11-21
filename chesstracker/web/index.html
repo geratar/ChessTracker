@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>ChessTracker</title>
+<title>ChessEmeg</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header>
-  <div class="logo">♞ ChessTracker</div>
+  <div class="logo">♞ ChessEmeg</div>
   <nav>
     <button data-tab="setup" class="tab active">Setup</button>
     <button data-tab="play" class="tab">Play</button>
@@ -15,7 +15,7 @@
   </nav>
   <button id="settingsBtn" class="ghost" title="Settings">⚙ Settings</button>
 </header>
-<div id="updateBar" class="banner hidden">A new version of ChessTracker is available.
+<div id="updateBar" class="banner hidden">A new version of ChessEmeg is available.
   <button id="updateNow" class="primary">Update now</button></div>
 
 <main>
@@ -181,7 +181,7 @@
     <label><input type="radio" name="result" value="*" checked> Not finished</label>
   </div>
   <p class="hint">The date is added automatically.</p>
-  <div class="nav"><button id="cancelSave" class="ghost">Cancel</button><button id="doSave" class="primary">Save</button>
+  <div class="nav"><button id="cancelSave" class="ghost">Cancel</button><button id="finishNoSave" class="ghost hidden">Finish without saving</button><button id="doSave" class="primary">Save</button>
     <button id="doSaveAnalyze" class="primary hidden">Save &amp; analyze</button></div>
 </dialog>
 

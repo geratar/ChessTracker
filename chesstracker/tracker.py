@@ -24,7 +24,7 @@ TRACKER_DEFAULTS = {
     "absorb_seconds": 3.0,         # unchanged board for this long => refresh reference (lighting drift)
     "min_change_score": 18.0,
     "median_factor": 3.0,
-    "rel_to_max": 0.4,
+    "rel_to_max": 0.3,
     "strong_single_factor": 2.0,   # one square changed this strongly => probably a move, ask
     "rel_margin": 0.2,             # best move must explain this much more of the change than the next
     "piece_height": 1.6,           # tallest piece height in square widths (0 = ignore camera geometry)
@@ -34,7 +34,7 @@ TRACKER_DEFAULTS = {
 
 @dataclass
 class Event:
-    kind: str          # move | ambiguous | promotion | unrecognized | obstructed | ready
+    kind: str          # move | ambiguous | promotion | unrecognized | lost | ready
     t: float
     text: str
     move: chess.Move = None
@@ -118,8 +118,9 @@ class Tracker:
         if unsettled:
             self.unchanged_since = None
             key = frozenset(unsettled)
-            if self.evaluated or self._partial_key == key or not changed or \
-                    t - self.changed_since < self.s["confirm_seconds"]:
+            # Squares only count once they have been still for a while, so no extra wait here:
+            # in fast play a clear view may last only a moment.
+            if self.evaluated or self._partial_key == key or not changed:
                 return events
             self._partial_key = key    # look again whenever the hand moves to other squares
             return self._decide_partial(changed, unsettled, t, events)
@@ -137,13 +138,16 @@ class Tracker:
             changed = self._changed(scores)
         self._log_eval(t, changed, scores)
         if len(changed) > self.s["max_changed_squares"]:
-            return self._report(events, Event("obstructed", t,
-                                f"{len(changed)} squares changed: hand, shadow or moved board? Waiting.",
+            return self._report(events, Event("lost", t,
+                                f"Lost track: {len(changed)} squares differ from the last known position "
+                                "(several moves missed, or the board was bumped). Add the missed moves with "
+                                "'Enter a move' and tracking continues from there.",
                                 squares=set(changed)))
         result = match_move(self.board, changed, shadows=self.shadows, strengths=self.last_strengths,
                             rel_margin=self.s["rel_margin"])
         if result.status == ACCEPT:
-            events.append(self._apply([result.move], feats, t))
+            seq = result.candidates[0].moves if result.candidates and result.candidates[0].move == result.move else [result.move]
+            events.append(self._apply(seq, feats, t))
         elif result.status in (AMBIGUOUS, PROMOTION, TWO_MOVES):
             self.pending = result
             kind = {AMBIGUOUS: "ambiguous", PROMOTION: "promotion", TWO_MOVES: "two_moves"}[result.status]

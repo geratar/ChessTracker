@@ -88,6 +88,15 @@
 - Default wait 0.6+0.5 s -> 0.4+0.3 s; Settings: Fast (0.25+0.2) / Normal / Careful (0.7+0.5).
 - Both recordings correct at all three speeds, ~0.7 s quicker. 70 tests pass.
 
+## Fast-game recording 3 (12:40)
+- 6 moves in ~8 s; an arm was over most of the board (side camera) the whole time: between e4 and Qa5
+  the board was fully clear for one frame. Not recoverable from images.
+- Added: catch-up of 2-3 missed moves when exactly one legal sequence explains the strong changes;
+  partial-view decisions without the extra confirm wait; rel_to_max 0.4 -> 0.3 (origin square of a
+  capture was hidden under the bar); "Lost track ... use Enter a move" instead of a silent wait.
+- UI: Finish game with no moves; "Finish without saving"; app renamed ChessEmeg (display name only;
+  repo, folder and launcher file names unchanged so the updater keeps working). 72 tests pass.
+
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,

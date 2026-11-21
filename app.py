@@ -1,4 +1,4 @@
-"""ChessTracker app: opens in your web browser (runs locally, no internet needed).
+"""ChessEmeg app: opens in your web browser (runs locally, no internet needed).
 
   python app.py            then open http://localhost:8765 (opens automatically)
 """
@@ -201,7 +201,7 @@ def main():
             time.sleep(0.5)
     server.daemon_threads = True
     url = f"http://localhost:{args.port}"
-    print(f"ChessTracker is running at {url}  (close this window to quit)")
+    print(f"ChessEmeg is running at {url}  (close this window to quit)")
     if not args.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     try:

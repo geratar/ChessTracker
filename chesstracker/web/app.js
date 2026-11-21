@@ -1,4 +1,4 @@
-// ChessTracker UI. Talks to app.py over a small JSON API.
+// ChessEmeg UI. Talks to app.py over a small JSON API.
 const $ = (id) => document.getElementById(id);
 let S = null;              // latest /api/state
 let corners = [];          // calibration corners being edited (camera pixels)
@@ -157,7 +157,7 @@ $("enterBtn").onclick = () => startClick("enter");
 $("undoBtn").onclick = () => post("/api/undo");
 $("recBtn").onclick = async () => {
   const r = await post("/api/record");
-  if (!r.recording) alert("Video saved:\n" + r.file + "\n\nYou'll find it in the ChessTracker folder, inside data > recordings.");
+  if (!r.recording) alert("Video saved:\n" + r.file + "\n\nYou'll find it in the app's folder, inside data > recordings.");
 };
 $("newBtn").onclick = () => guardUnsaved("Start a new game? Save this one first?", async () => {
   if (!S.calibration.saved) { showTab("setup", true); return; }
@@ -165,12 +165,22 @@ $("newBtn").onclick = () => guardUnsaved("Start a new game? Save this one first?
 });
 $("flipBtn").onclick = () => post("/api/settings", { flipped: !S.settings.flipped });
 let afterSave = null, finishing = false;
+async function finishWithoutSaving() {
+  $("saveDlg").close(); finishing = false; afterSave = null;
+  await post("/api/tracking/stop");
+  S.unsaved = false;
+  $("status").textContent = "Game finished (not saved).";
+}
 function openSave(then, finish) {
-  if (!S.moves.length) return alert("No moves to save yet.");
+  if (!S.moves.length) {
+    if (finish) return finishWithoutSaving();      // nothing played yet: nothing to save
+    return alert("No moves to save yet.");
+  }
   afterSave = then || null; finishing = !!finish;
   $("saveTitle").textContent = finish ? "Finish game" : "Save game";
   $("doSave").textContent = finish ? "Finish & save" : "Save";
   $("doSaveAnalyze").classList.toggle("hidden", !finish);
+  $("finishNoSave").classList.toggle("hidden", !finish);
   $("gameName").value = "";
   const r = document.querySelector(`input[name=result][value="${S.outcome}"]`) || document.querySelector('input[name=result][value="*"]');
   r.checked = true;
@@ -197,6 +207,7 @@ async function doSave(analyze) {
   const then = afterSave; afterSave = null; if (then) then();
 }
 $("doSave").onclick = () => doSave(false);
+$("finishNoSave").onclick = finishWithoutSaving;
 $("doSaveAnalyze").onclick = () => doSave(true);
 $("finishBtn").onclick = () => {
   if (S.mode !== "tracking") return alert("No game in progress.");

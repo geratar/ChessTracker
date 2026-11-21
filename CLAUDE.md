@@ -1,4 +1,4 @@
-# Chess Tracker: working notes
+# ChessEmeg (repo: ChessTracker): working notes
 
 ## Goal
 Webcam tracks a physical wooden chess game; moves appear on a digital board within 2-3 s.

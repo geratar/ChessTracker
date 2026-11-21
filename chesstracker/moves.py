@@ -58,7 +58,8 @@ def _occupied(board):
 
 def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, min_score=1.5,
                min_margin=1.0, max_candidates=5, allow_two=True, shadows=None,
-               w_extra_shadow=0.05, w_missing_hidden=0.4, strengths=None, rel_margin=0.2):
+               w_extra_shadow=0.05, w_missing_hidden=0.4, strengths=None, rel_margin=0.2,
+               max_plies=3, seq_margin=0.3):
     """Rank legal moves by how well they explain `changed` (iterable of squares).
 
     score = matched - w_missing * missing - w_extra * extra
@@ -123,9 +124,19 @@ def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, mi
 
     if not ranked or ranked[0].score < min_score:
         if allow_two and len(changed) >= 3:
-            two = _match_two(board, changed, score, ranked, min_score, max_candidates)
-            if two:
-                return MatchResult(TWO_MOVES, candidates=two)
+            seqs = _match_sequences(board, changed, score, min_score, max_plies)
+            if seqs and strengths is not None:
+                seqs.sort(key=lambda c: c.weight, reverse=True)
+                best = seqs[0]
+                clear = (len(seqs) == 1 or best.weight - seqs[1].weight >= seq_margin * best.weight)
+                exp = expected_changes(board, *best.moves)
+                weak = [q for q in exp if strengths.get(q, 0.0) < 0.5]   # expected but barely changed
+                if (clear and best.weight > 0 and not weak and best.extra <= 1
+                        and not any(m.promotion for m in best.moves)):
+                    # Fast play: several moves happened between two still moments. Catch up.
+                    return MatchResult(ACCEPT, move=best.move, candidates=seqs[:max_candidates])
+            if seqs:
+                return MatchResult(TWO_MOVES, candidates=seqs[:max_candidates])
         return MatchResult(NO_MOVE, candidates=ranked)
     if strengths is not None:
         eligible = sorted([c for c in by_squares.values() if c.score >= min_score],
@@ -171,25 +182,39 @@ def _weighted(exp, zone, hidden, st, geometry, cap=3.0):
     return w
 
 
-def _match_two(board, changed, score, singles, min_score, max_candidates):
-    """A move was missed: look for two consecutive moves that explain the changes.
-    Only first moves touching a changed square are tried (keeps it fast)."""
-    out = []
-    for first in board.legal_moves:
-        if first.from_square not in changed and first.to_square not in changed:
-            continue
-        b2 = board.copy(stack=False)
-        b2.push(first)
-        for second in b2.legal_moves:
-            if second.from_square not in changed and second.to_square not in changed:
-                continue
-            if second.promotion not in (None, chess.QUEEN) or first.promotion not in (None, chess.QUEEN):
-                continue
-            c = score([first, second])
-            if c.score >= min_score:
-                out.append(c)
-    out.sort(key=lambda c: c.score, reverse=True)
-    return out[:max_candidates]
+def _match_sequences(board, changed, score, min_score, max_plies=3, limit=4000):
+    """Moves were missed (fast play): find 2..max_plies consecutive legal moves that
+    explain the changes. Every move must touch a changed square (keeps it fast and
+    rules out pieces that moved and came back). Shorter sequences are preferred:
+    longer ones are only tried when no shorter one fits."""
+    for plies in range(2, max_plies + 1):
+        out, seen, tried = [], set(), 0
+        stack = [(board.copy(stack=False), [])]
+        while stack:
+            b, seq = stack.pop()
+            for m in b.legal_moves:
+                if m.from_square not in changed and m.to_square not in changed:
+                    continue
+                if m.promotion not in (None, chess.QUEEN):
+                    continue
+                tried += 1
+                if tried > limit:
+                    break
+                if len(seq) + 1 < plies:
+                    nb = b.copy(stack=False)
+                    nb.push(m)
+                    stack.append((nb, seq + [m]))
+                    continue
+                c = score(seq + [m])
+                if c.score >= min_score + (plies - 2):     # a third move must earn its place
+                    key = tuple(mv.uci() for mv in c.moves)
+                    if key not in seen:
+                        seen.add(key)
+                        out.append(c)
+        if out:
+            out.sort(key=lambda c: c.score, reverse=True)
+            return out
+    return []
 
 
 def candidates_for_square(board, square, max_candidates=5):

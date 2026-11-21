@@ -147,3 +147,16 @@ def test_speed_setting_changes_tracker_timing(engine):
     assert engine.state()["settings"]["speed"] == "careful"
     with pytest.raises(ValueError):
         engine.update_settings(speed="warp")
+
+
+def test_players_saved_with_game(engine):
+    anna = engine.players.create("Anna", 2)
+    with pytest.raises(ValueError):
+        engine.start_tracking(white=anna["id"], black=anna["id"])
+    engine.start_tracking(white=anna["id"], black=None)      # Black anonymous
+    assert engine.state()["players"]["white"]["name"] == "Anna"
+    engine.manual_move("e4")
+    gid = engine.save_game("With players")
+    g = engine.list_games()[0]
+    assert g["white"] == {"name": "Anna", "avatar": 2} and g["black"] is None
+    assert engine.load_game(gid)["white"]["name"] == "Anna"

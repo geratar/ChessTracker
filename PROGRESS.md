@@ -131,6 +131,14 @@
 - Clip: 1. e4 d5 2. exd5 Qxd5 3. Nc3 Qa5 4. d4 c6 5. Bd2 Qc7, all correct, one question (right answer
   listed first). All 6 recordings: no wrong move. fixtures/normal_pace. 79 tests.
 
+## Variations + player profiles (16:10)
+- Library replay: click a piece then a square to try your own moves; off the game line the board turns
+  lighter and a "Your line" bar with Reset (back to where you left the game) appears. Same move as the
+  game just steps forward. Eval/arrows hidden while exploring. `/api/explore` checks legality.
+- Players (data/players.json, name + one of 20 avatars drawn in `chesstracker/players.py`). "Who's
+  playing?" dialog before Start tracking / New game; Anonymous allowed on either side; last pick
+  remembered. Names saved as PGN White/Black (+WhiteAvatar/BlackAvatar); shown on clock and Library. 83 tests.
+
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,

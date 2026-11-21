@@ -70,7 +70,7 @@ $("calibArea").addEventListener("mousedown", (e) => {
 window.addEventListener("mousemove", (e) => { if (dragIdx !== null) { corners[dragIdx] = imgPoint(e); sendCorners(); } });
 window.addEventListener("mouseup", () => { dragIdx = null; });
 $("startBtn").onclick = () => guardUnsaved("Starting tracking begins a new game. Save the current one first?",
-  async () => { await post("/api/tracking/start"); showTab("play", true); });
+  () => choosePlayers(async (white, black) => { await post("/api/tracking/start", { white, black }); showTab("play", true); }));
 
 // ---------------- play ----------------
 let boardKey = "";
@@ -122,6 +122,12 @@ function renderPlay() {
   $("clock").classList.toggle("hidden", !playing);
   if (playing && S.clock) {
     const fmt = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
+    const P = S.players || {};
+    ["white", "black"].forEach(side => {
+      const p = P[side], el = $(side === "white" ? "clockWhite" : "clockBlack").querySelector(".who");
+      const html = p ? `${avatarImg(p.avatar)}<span>${esc(p.name)}</span>` : `<span>${side === "white" ? "White" : "Black"}</span>`;
+      if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; }
+    });
     $("clockWhite").querySelector("b").textContent = fmt(S.clock.white);
     $("clockBlack").querySelector("b").textContent = fmt(S.clock.black);
     $("clockWhite").classList.toggle("active", S.clock.turn === "white");
@@ -168,10 +174,75 @@ $("recBtn").onclick = async () => {
   const r = await post("/api/record");
   if (!r.recording) alert("Video saved:\n" + r.file + "\n\nYou'll find it in the app's folder, inside data > recordings.");
 };
-$("newBtn").onclick = () => guardUnsaved("Start a new game? Save this one first?", async () => {
+$("newBtn").onclick = () => guardUnsaved("Start a new game? Save this one first?", () => {
   if (!S.calibration.saved) { showTab("setup", true); return; }
-  await post("/api/new_game");
+  choosePlayers((white, black) => post("/api/new_game", { white, black }));
 });
+
+// ---------------- players ----------------
+let playerList = [], avatarCount = 20, pick = { white: null, black: null }, newAvatar = 0, playersThen = null;
+const avatarImg = (n) => n === null || n === undefined ? "" : `<img class="av" src="/api/avatar/${n}.svg" alt="">`;
+const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+async function choosePlayers(then) {
+  const r = await api("/api/players"); playerList = r.players; avatarCount = r.avatars;
+  let last = {}; try { last = JSON.parse(localStorage.getItem("lastPlayers") || "{}"); } catch (e) { }
+  const exists = (id) => id === "anon" || playerList.some(p => p.id === id) ? id : null;
+  pick = { white: exists(last.white), black: exists(last.black) };
+  playersThen = then; renderPick(); showNewPlayer(!playerList.length);
+  $("playersDlg").showModal();
+}
+function renderPick() {
+  ["white", "black"].forEach(side => {
+    const other = side === "white" ? "black" : "white", el = $(side === "white" ? "pickWhite" : "pickBlack");
+    el.innerHTML = "";
+    const anon = document.createElement("button");      // can be picked for both sides
+    anon.className = pick[side] === "anon" ? "sel" : "";
+    anon.innerHTML = `<span class="av anon">?</span><span>Anonymous</span>`;
+    anon.onclick = () => { pick[side] = pick[side] === "anon" ? null : "anon"; renderPick(); };
+    el.appendChild(anon);
+    playerList.forEach(p => {
+      const b = document.createElement("button");
+      b.className = pick[side] === p.id ? "sel" : ""; b.disabled = pick[other] === p.id;
+      b.innerHTML = `${avatarImg(p.avatar)}<span>${esc(p.name)}</span>`;
+      b.onclick = () => { pick[side] = pick[side] === p.id ? null : p.id; renderPick(); };
+      el.appendChild(b);
+    });
+  });
+}
+function showNewPlayer(on) {
+  $("newPlayer").classList.toggle("hidden", !on); $("newPlayerBtn").classList.toggle("hidden", on);
+  if (!on) return;
+  $("playerName").value = ""; newAvatar = playerList.length % avatarCount;
+  const g = $("avatarGrid"); g.innerHTML = "";
+  for (let i = 0; i < avatarCount; i++) {
+    const b = document.createElement("button"); b.className = i === newAvatar ? "sel" : "";
+    b.innerHTML = `<img src="/api/avatar/${i}.svg" alt="avatar ${i + 1}">`;
+    b.onclick = () => { newAvatar = i; g.querySelectorAll("button").forEach((x, j) => x.classList.toggle("sel", j === i)); };
+    g.appendChild(b);
+  }
+  $("playerName").focus();
+}
+$("newPlayerBtn").onclick = () => showNewPlayer(true);
+$("newPlayerCancel").onclick = () => showNewPlayer(false);
+$("newPlayerSave").onclick = async () => {
+  const name = $("playerName").value.trim();
+  if (!name) return alert("Type a name for the player.");
+  const p = await post("/api/players/create", { name, avatar: newAvatar });
+  if (!p || !p.id) return;
+  playerList.push(p);
+  if (!pick.white || pick.white === "anon") pick.white = p.id; else if (!pick.black || pick.black === "anon") pick.black = p.id;
+  showNewPlayer(false); renderPick();
+};
+$("playerName").addEventListener("keydown", (e) => { if (e.key === "Enter") $("newPlayerSave").click(); });
+$("swapPlayers").onclick = () => { pick = { white: pick.black, black: pick.white }; renderPick(); };
+$("playersCancel").onclick = () => { playersThen = null; $("playersDlg").close(); };
+$("playersGo").onclick = async () => {
+  if (!pick.white || !pick.black) return alert("Pick a player for White and for Black (Anonymous is fine too).");
+  localStorage.setItem("lastPlayers", JSON.stringify(pick));
+  const then = playersThen; playersThen = null; $("playersDlg").close();
+  const id = (x) => x === "anon" ? null : x;
+  if (then) await then(id(pick.white), id(pick.black));
+};
 // "Move done": like pressing a chess clock
 async function tap() { if (S && S.mode === "tracking" && !S.pending.length) { try { await post("/api/tap"); } catch (e) {} } }
 $("tapBtn").onclick = (e) => { e.currentTarget.blur(); tap(); };
@@ -276,13 +347,15 @@ async function loadLibrary() {
   games.forEach(g => {
     const d = document.createElement("div"); d.className = "g" + (game && game.id === g.id ? " sel" : "");
     const res = { "1-0": "1-0", "0-1": "0-1", "1/2-1/2": "½-½" }[g.result] || "";
-    d.innerHTML = `<span class="res">${res}</span><b></b><small>${g.date} ${g.time} · ${g.moves} moves</small>`; d.querySelector("b").textContent = g.name;
+    const who = (p, fallback) => p ? `${avatarImg(p.avatar)}<span>${esc(p.name)}</span>` : `<span>${fallback}</span>`;
+    const vs = g.white || g.black ? `<div class="vs">${who(g.white, "Anonymous")}<small>vs</small>${who(g.black, "Anonymous")}</div>` : "";
+    d.innerHTML = `<span class="res">${res}</span><b></b>${vs}<small>${g.date} ${g.time} · ${g.moves} moves</small>`; d.querySelector("b").textContent = g.name;
     d.onclick = () => openGame(g.id); el.appendChild(d);
   });
 }
 let ana = null, anaTimer = null;
 async function openGame(id) {
-  game = await api("/api/game?id=" + encodeURIComponent(id)); ply = game.plies.length - 1;
+  game = await api("/api/game?id=" + encodeURIComponent(id)); ply = game.plies.length - 1; vari = null; replayFrom = null;
   ana = null; clearTimeout(anaTimer); $("anaMsg").textContent = ""; $("analyzeBtn").classList.remove("hidden");
   await pollAnalysis(false);
   renderReplay(); loadLibrary();
@@ -347,23 +420,67 @@ $("evalGraph").onclick = (ev) => {
   const r = ev.currentTarget.getBoundingClientRect();
   go(Math.round((ev.clientX - r.left) / r.width * (game.plies.length - 1)));
 };
+// your own moves while replaying: vari = { base: ply where you left the game, plies: [...] }, vply = position in it
+let vari = null, vply = 0, replayFrom = null;
+function curPly() { return vari ? (vply === 0 ? game.plies[vari.base] : vari.plies[vply - 1]) : game.plies[ply]; }
 function renderReplay() {
   if (!game) return;
-  const p = game.plies[ply];
+  const p = curPly();
   const q = new URLSearchParams({ fen: p.fen, theme: S.settings.theme, flipped: S.settings.flipped });
   if (p.uci) q.set("lastmove", p.uci);
-  if (ana && ana.evals[ply] && ana.evals[ply].best) q.set("arrow", ana.evals[ply].best);
+  if (vari) q.set("explore", "1");
+  else if (ana && ana.evals[ply] && ana.evals[ply].best) q.set("arrow", ana.evals[ply].best);
   $("replayImg").src = "/api/board.svg?" + q;
-  $("rPos").textContent = `${ply} / ${game.plies.length - 1}`;
+  $("rPos").textContent = vari ? `Your line ${vply} / ${vari.plies.length}` : `${ply} / ${game.plies.length - 1}`;
   const el = $("replayMoves"); el.classList.add("replay");
-  renderMoves(el, game.plies.slice(1).map(x => x.san), ply - 1, (n) => { ply = n; renderReplay(); }, ana && ana.moves);
-  renderAnalysis();
+  renderMoves(el, game.plies.slice(1).map(x => x.san), (vari ? vari.base : ply) - 1, (n) => { vari = null; ply = n; renderReplay(); }, ana && ana.moves);
+  $("variation").classList.toggle("hidden", !vari);
+  $("replayHint").classList.toggle("hidden", !!vari);
+  if (vari) {
+    const box = $("varMoves"); box.innerHTML = "";
+    vari.plies.forEach((m, i) => {
+      const n = vari.base + i;              // plies played before this move
+      const s = document.createElement("span");
+      s.textContent = (n % 2 === 0 ? `${n / 2 + 1}. ` : (i === 0 ? `${(n + 1) / 2}... ` : "")) + m.san;
+      s.className = i === vply - 1 ? "cur" : ""; s.onclick = () => { vply = i + 1; renderReplay(); };
+      box.appendChild(s);
+    });
+    $("bestLine").textContent = "You're exploring your own moves. Reset goes back to the game.";
+    $("evalBar").classList.add("hidden"); $("evalGraph").classList.add("hidden");
+  } else renderAnalysis();
 }
-const go = (n) => { if (game) { ply = Math.max(0, Math.min(game.plies.length - 1, n)); renderReplay(); } };
-$("rFirst").onclick = () => go(0); $("rLast").onclick = () => go(1e9);
+const go = (n) => {
+  if (!game) return;
+  if (vari) { vply = Math.max(0, Math.min(vari.plies.length, n - vari.base)); return renderReplay(); }
+  ply = Math.max(0, Math.min(game.plies.length - 1, n)); renderReplay();
+};
+function resetVariation() { if (vari) { ply = vari.base; vari = null; replayFrom = null; markReplay(); renderReplay(); } }
+$("varReset").onclick = resetVariation;
+(function buildReplayGrid() {
+  const g = $("replayGrid");
+  for (let i = 0; i < 64; i++) { const d = document.createElement("div"); d.onclick = () => replayClick(i); g.appendChild(d); }
+})();
+function markReplay() { [...$("replayGrid").children].forEach((d, j) => d.classList.toggle("sel", j === replayFrom)); }
+async function replayClick(i) {
+  if (!game) return;
+  if (autoTimer) $("rPlay").click();
+  if (replayFrom === null || replayFrom === i) { replayFrom = replayFrom === i ? null : i; return markReplay(); }
+  const uci = squareName(replayFrom) + squareName(i);
+  replayFrom = null; markReplay();
+  let r;
+  try { r = await api("/api/explore", { fen: curPly().fen, move: uci }); }
+  catch (e) { replayFrom = i; return markReplay(); }   // not a legal move: treat the click as picking a new piece
+  if (!vari && ply < game.plies.length - 1 && game.plies[ply + 1].uci === r.uci) return go(ply + 1);   // same as the game
+  if (vari && vply < vari.plies.length && vari.plies[vply].uci === r.uci) { vply++; return renderReplay(); }
+  if (!vari) { vari = { base: ply, plies: [] }; vply = 0; }
+  vari.plies = vari.plies.slice(0, vply); vari.plies.push(r); vply++;
+  renderReplay();
+}
+$("rFirst").onclick = () => go(vari ? vari.base : 0); $("rLast").onclick = () => go(1e9);
 $("rPrev").onclick = () => go(ply - 1); $("rNext").onclick = () => go(ply + 1);
 $("rPlay").onclick = () => {
   if (autoTimer) { clearInterval(autoTimer); autoTimer = null; $("rPlay").textContent = "▷ Auto"; return; }
+  if (vari) resetVariation();
   if (game && ply >= game.plies.length - 1) go(0);
   $("rPlay").textContent = "❚❚ Stop";
   autoTimer = setInterval(() => { if (!game || ply >= game.plies.length - 1) { $("rPlay").click(); } else go(ply + 1); }, 1200);

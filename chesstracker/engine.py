@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 
 from .analysis import Analyzer
+from .players import Players
 from .calibration import Calibration, orientation_check
 from .detector import min_square_px
 from .camera import FrameSource, list_cameras
@@ -87,6 +88,8 @@ class Engine:
         self.data_dir = data_dir
         self.saved_plies = 0           # moves already saved to the library
         self.analyzer = Analyzer(data_dir / "engine", self.library_dir)
+        self.players = Players(data_dir / "players.json")
+        self.game_players = {"white": None, "black": None}   # player ids for the current game
         self.running = True
         self.thread = threading.Thread(target=self._loop, daemon=True)
         self._open_camera(source if source is not None else self.camera_index)
@@ -155,11 +158,17 @@ class Engine:
             self.saved_calibration = cal
 
     # --- tracking --------------------------------------------------------------
-    def start_tracking(self, fen=None):
+    def start_tracking(self, fen=None, white=None, black=None):
         with self.lock:
             cal = self.calibration()
             if cal is None:
                 raise ValueError("Calibrate the board first")
+            for pid in (white, black):
+                if pid and self.players.get(pid) is None:
+                    raise ValueError("Player not found")
+            if white and white == black:
+                raise ValueError("Pick two different players")
+            self.game_players = {"white": white or None, "black": black or None}
             board = chess.Board(fen) if fen else chess.Board()
             self.tracker = Tracker(cal, self._tracker_settings(), board)
             self.saved_plies = 0
@@ -176,8 +185,8 @@ class Engine:
             self.mode = "setup"
             self.tracker = None
 
-    def new_game(self):
-        self.start_tracking()
+    def new_game(self, white=None, black=None):
+        self.start_tracking(white=white, black=black)
 
     def confirm(self, index):
         with self.lock:
@@ -318,6 +327,11 @@ class Engine:
             game.headers["Event"] = name
             game.headers["Date"] = time.strftime("%Y.%m.%d")
             game.headers["Time"] = time.strftime("%H:%M")
+            for side in ("white", "black"):
+                p = self.players.get(self.game_players.get(side)) if self.game_players.get(side) else None
+                if p:
+                    game.headers[side.capitalize()] = p["name"]
+                    game.headers[side.capitalize() + "Avatar"] = str(p["avatar"])
             self.library_dir.mkdir(parents=True, exist_ok=True)
             safe = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in name).strip()[:40]
             path = self.library_dir / f"{time.strftime('%Y%m%d_%H%M%S')}_{safe}.pgn"
@@ -338,7 +352,17 @@ class Engine:
                         "date": g.headers.get("Date", "?").replace(".", "-"),
                         "time": g.headers.get("Time", ""),
                         "moves": len(list(g.mainline_moves())),
-                        "result": g.headers.get("Result", "*")})
+                        "result": g.headers.get("Result", "*"), **self._game_players(g)})
+        return out
+
+    @staticmethod
+    def _game_players(g):
+        out = {}
+        for side in ("white", "black"):
+            name = g.headers.get(side.capitalize(), "?")
+            av = g.headers.get(side.capitalize() + "Avatar", "")
+            out[side] = ({"name": name, "avatar": int(av) if av.isdigit() else None}
+                         if name and name != "?" else None)
         return out
 
     def load_game(self, game_id):
@@ -354,7 +378,8 @@ class Engine:
             board.push(m)
             plies.append({"fen": board.fen(), "san": san, "uci": m.uci()})
         return {"id": game_id, "name": g.headers.get("Event", ""), "date": g.headers.get("Date", ""),
-                "result": g.headers.get("Result", "*"), "pgn": str(g), "plies": plies}
+                "result": g.headers.get("Result", "*"), "pgn": str(g), "plies": plies,
+                **self._game_players(g)}
 
     def analyze(self, game_id):
         g = self.load_game(game_id)
@@ -412,6 +437,8 @@ class Engine:
                 "settings": self.settings,
                 "recording": self.writer is not None,
                 "clock": self._clock_state(),
+                "players": {side: self.players.get(pid) if pid else None
+                            for side, pid in self.game_players.items()},
                 "unsaved": bool(t and len(t.board.move_stack) > self.saved_plies),
                 "outcome": board.result() if board.is_game_over() else "*",
                 "themes": list(THEMES),

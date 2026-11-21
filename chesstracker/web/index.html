@@ -96,9 +96,9 @@
           <div class="grid" id="boardGrid"></div>
         </div>
         <div class="clock hidden" id="clock">
-          <div id="clockWhite"><span>White</span><b>0:00</b></div>
+          <div id="clockWhite"><span class="who"></span><b>0:00</b></div>
           <button id="tapBtn" class="primary" title="Press after each move (or the Space key)">✓ Move done <small>Space</small></button>
-          <div id="clockBlack"><span>Black</span><b>0:00</b></div>
+          <div id="clockBlack"><span class="who"></span><b>0:00</b></div>
         </div>
         <div class="status" id="status">Not tracking yet. Use Setup to start.</div>
         <div class="ask hidden" id="ask"></div>
@@ -128,7 +128,8 @@
       <div class="boardcol">
         <div class="analysisrow">
           <div class="evalbar hidden" id="evalBar"><div id="evalFill"></div><span id="evalText"></span></div>
-          <div class="boardwrap"><img id="replayImg" alt="replay board"></div>
+          <div class="boardwrap"><img id="replayImg" alt="replay board">
+            <div class="grid active" id="replayGrid"></div></div>
         </div>
         <div class="replaynav">
           <button id="rFirst">⏮</button><button id="rPrev">◀</button>
@@ -136,6 +137,11 @@
           <button id="rNext">▶</button><button id="rLast">⏭</button>
           <button id="rPlay">▷ Auto</button>
         </div>
+        <div class="variation hidden" id="variation">
+          <span>Your line:</span> <span id="varMoves"></span>
+          <button id="varReset" class="primary">↺ Reset</button>
+        </div>
+        <p class="hint" id="replayHint">Try your own moves: click a piece, then the square to move it to.</p>
       </div>
       <div class="side">
         <h2>Saved games</h2>
@@ -193,6 +199,25 @@
   <p class="hint">The date is added automatically.</p>
   <div class="nav"><button id="cancelSave" class="ghost">Cancel</button><button id="finishNoSave" class="ghost hidden">Finish without saving</button><button id="doSave" class="primary">Save</button>
     <button id="doSaveAnalyze" class="primary hidden">Save &amp; analyze</button></div>
+</dialog>
+
+<!-- Players dialog -->
+<dialog id="playersDlg">
+  <h2>Who's playing?</h2>
+  <div class="pickrow">
+    <div class="pickside"><h3>♔ White</h3><div class="plist" id="pickWhite"></div></div>
+    <button id="swapPlayers" class="ghost" title="Swap colours">⇄</button>
+    <div class="pickside"><h3>♚ Black</h3><div class="plist" id="pickBlack"></div></div>
+  </div>
+  <button id="newPlayerBtn" class="ghost">＋ New player</button>
+  <div id="newPlayer" class="hidden">
+    <label>Name <input id="playerName" maxlength="30" placeholder="e.g. Anna"></label>
+    <p>Avatar</p>
+    <div class="avatars" id="avatarGrid"></div>
+    <div class="nav"><button id="newPlayerCancel" class="ghost">Cancel</button><button id="newPlayerSave" class="primary">Add player</button></div>
+  </div>
+  <div class="nav"><button id="playersCancel" class="ghost">Cancel</button>
+    <button id="playersGo" class="primary">Start game</button></div>
 </dialog>
 
 <!-- Unsaved game dialog -->

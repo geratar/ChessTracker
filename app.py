@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlparse
 import chess
 import chess.svg
 
-from chesstracker import updater
+from chesstracker import players, updater
 from chesstracker.engine import THEMES, Engine
 
 WEB = Path(__file__).resolve().parent / "chesstracker" / "web"
@@ -23,7 +23,25 @@ CONTENT_TYPES = {".html": "text/html", ".js": "application/javascript", ".css": 
                  ".svg": "image/svg+xml", ".png": "image/png"}
 
 
-def board_svg(fen, lastmove=None, theme="green", flipped=False, size=560, arrow=None):
+def _lighten(hex_colour, f=0.45):
+    rgb = [int(hex_colour[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#%02x%02x%02x" % tuple(round(c + (255 - c) * f) for c in rgb)
+
+
+def explore_move(fen, move):
+    """A move the user tries while replaying: legal moves only, pawns promote to a queen."""
+    board = chess.Board(fen)
+    m = chess.Move.from_uci(move)
+    if m not in board.legal_moves and m.promotion is None:
+        m = chess.Move(m.from_square, m.to_square, promotion=chess.QUEEN)
+    if m not in board.legal_moves:
+        raise ValueError("That move isn't legal here")
+    san = board.san(m)
+    board.push(m)
+    return {"fen": board.fen(), "san": san, "uci": m.uci()}
+
+
+def board_svg(fen, lastmove=None, theme="green", flipped=False, size=560, arrow=None, explore=False):
     board = chess.Board(fen)
     lm = chess.Move.from_uci(lastmove) if lastmove else None
     arrows = []
@@ -32,6 +50,9 @@ def board_svg(fen, lastmove=None, theme="green", flipped=False, size=560, arrow=
         arrows = [chess.svg.Arrow(a.from_square, a.to_square, color="#3b82f6cc")]
     check = board.king(board.turn) if board.is_check() else None
     colors = dict(THEMES.get(theme, THEMES["green"]))
+    if explore:   # off the game line: a lighter board, like analysis boards online
+        colors = {k: _lighten(v) if isinstance(v, str) and v.startswith("#") and len(v) == 7 else v
+                  for k, v in colors.items()}
     colors.update({"margin": "#302e2b", "coord": "#bababa"})
     return chess.svg.board(board, lastmove=lm, check=check, size=size, arrows=arrows,
                            orientation=chess.BLACK if flipped else chess.WHITE, colors=colors)
@@ -75,10 +96,18 @@ class Handler(BaseHTTPRequestHandler):
             flipped = q.get("flipped", str(s.get("flipped", False))).lower() == "true"
             try:
                 svg = board_svg(fen, q.get("lastmove"), q.get("theme", s.get("theme")), flipped,
-                                arrow=q.get("arrow"))
+                                arrow=q.get("arrow"), explore=q.get("explore") == "1")
             except ValueError as err:
                 return self._send(400, {"error": str(err)})
             return self._send(200, svg, "image/svg+xml")
+        if url.path.startswith("/api/avatar/") and url.path.endswith(".svg"):
+            try:
+                return self._send(200, players.avatar_svg(url.path[len("/api/avatar/"):-4]),
+                                  "image/svg+xml")
+            except ValueError:
+                return self._send(404, {"error": "not found"})
+        if url.path == "/api/players":
+            return self._send(200, {"players": e.players.all(), "avatars": players.COUNT})
         if url.path == "/api/library":
             return self._send(200, e.list_games())
         if url.path == "/api/game":
@@ -106,9 +135,12 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/corners": lambda: e.set_corners(d["corners"]),
                 "/api/rotate": lambda: e.rotate(),
                 "/api/calibration/save": lambda: e.save_calibration(),
-                "/api/tracking/start": lambda: e.start_tracking(d.get("fen")),
+                "/api/tracking/start": lambda: e.start_tracking(d.get("fen"), d.get("white"), d.get("black")),
                 "/api/tracking/stop": lambda: e.stop_tracking(),
-                "/api/new_game": lambda: e.new_game(),
+                "/api/new_game": lambda: e.new_game(d.get("white"), d.get("black")),
+                "/api/players/create": lambda: e.players.create(d.get("name"), d.get("avatar", 0)),
+                "/api/players/update": lambda: e.players.update(d["id"], d.get("name"), d.get("avatar")),
+                "/api/explore": lambda: explore_move(d["fen"], d["move"]),
                 "/api/confirm": lambda: e.confirm(int(d["index"])),
                 "/api/reject": lambda: e.reject(),
                 "/api/undo": lambda: e.undo(),

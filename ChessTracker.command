@@ -14,5 +14,8 @@ if [ ! -x .venv/bin/python ] || ! .venv/bin/python -c "import cv2, chess, certif
   rm -rf .venv
   "$PY" -m venv .venv && .venv/bin/pip install -q -r requirements.txt || { echo "Setup failed (see above). Press any key."; read -n 1; exit 1; }
 fi
+# Knight icon for this launcher. Updates replace the file (and its icon), so set it on every start.
+osascript -l JavaScript -e 'ObjC.import("AppKit"); function run(a) { $.NSWorkspace.sharedWorkspace.setIconForFileOptions($.NSImage.alloc.initWithContentsOfFile(a[0]), a[1], 0) }' \
+  "$PWD/chesstracker/web/icon.png" "$PWD/$(basename "$0")" >/dev/null 2>&1 &
 echo "Opening ChessEmeg in your browser. Keep this window open; close it to quit."
 .venv/bin/python app.py "$@"

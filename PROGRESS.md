@@ -152,6 +152,8 @@
   old Event names read as notes). All browser alert/confirm/prompt replaced by in-app dialogs, since
   browsers can silence them (likely why Rename "did nothing"). Buttons disabled until a game is open;
   Copy PGN shows "Copied". Every Library button checked in Playwright.
+- Knight icon (chesstracker/web/icon.svg/.png, also the browser tab icon). ChessTracker.command sets it
+  on itself at every start via osascript/NSWorkspace (an update replaces the file and drops the icon).
 
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.

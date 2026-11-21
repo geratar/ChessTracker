@@ -73,10 +73,11 @@ def main():
                     status, status_color = f"Move: {ev.text}", GREEN
                 elif ev.kind == "ready":
                     status, status_color = "Ready. Play!", GREEN
-                elif ev.kind in ("ambiguous", "promotion"):
-                    opts = "  ".join(f"[{k + 1}] {tracker.board.san(c.move)}"
+                elif ev.kind in ("ambiguous", "promotion", "two_moves"):
+                    opts = "  ".join(f"[{k + 1}] {tracker.describe(c)}"
                                      for k, c in enumerate(ev.candidates[:3]))
-                    status, status_color = f"Which move? {opts}  [X] none", RED
+                    q = "Missed a move? " if ev.kind == "two_moves" else "Which move? "
+                    status, status_color = f"{q}{opts}  [X] none", RED
                 else:
                     status, status_color = ev.text, YELLOW
 
@@ -92,7 +93,7 @@ def main():
         last = tracker.board.peek() if tracker.board.move_stack else None
         hl = set()
         if tracker.pending:
-            hl = set().union(*[{c.move.from_square, c.move.to_square} for c in tracker.pending.candidates[:1]])
+            hl = {sq for m in tracker.pending.candidates[0].moves for sq in (m.from_square, m.to_square)}
         bv = draw_board(tracker.board, 480, last, hl)
         panel = np.full((max(bv.shape[0], cam.shape[0]) + 60, cam.shape[1] + bv.shape[1] + 20, 3), 32, np.uint8)
         panel[:cam.shape[0], :cam.shape[1]] = cam
@@ -108,7 +109,7 @@ def main():
         if tracker.pending and key in (ord("1"), ord("2"), ord("3")):
             k = key - ord("1")
             if k < len(tracker.pending.candidates):
-                ev = tracker.confirm(tracker.pending.candidates[k].move, t)
+                ev = tracker.confirm(tracker.pending.candidates[k], t)
                 status, status_color = f"Move: {ev.text} (confirmed)", GREEN
         elif key == ord("x"):
             tracker.reject()

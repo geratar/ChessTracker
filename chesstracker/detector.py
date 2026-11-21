@@ -9,7 +9,7 @@ Pipeline per frame:
      give every square a change score (brightness-normalised L channel + edge
      strength, which shrugs off soft shadows and auto-exposure drift).
 """
-from dataclasses import dataclass
+from collections import deque
 
 import cv2
 import numpy as np
@@ -64,11 +64,19 @@ class Aligner:
 
 
 class MotionGate:
-    """Says when the scene has been still long enough to trust."""
+    """Says when the scene has been still long enough to trust.
 
-    def __init__(self, motion_threshold=4.0, stable_seconds=0.6):
+    Cameras differ in sensor noise, so the threshold adapts: it is the larger of
+    `motion_threshold` and `noise_factor` x the camera's measured noise floor
+    (a low percentile of recent motion values).
+    """
+
+    def __init__(self, motion_threshold=4.0, stable_seconds=0.6, noise_factor=1.6, history=300):
+        self.base_threshold = motion_threshold
         self.threshold = motion_threshold
         self.stable_seconds = stable_seconds
+        self.noise_factor = noise_factor
+        self.history = deque(maxlen=history)
         self.prev = None
         self.still_since = None
         self.motion = 0.0
@@ -78,6 +86,11 @@ class MotionGate:
         small = small.astype(np.float32)
         self.motion = 0.0 if self.prev is None else float(np.abs(small - self.prev).mean())
         self.prev = small
+        if self.motion > 0:
+            self.history.append(self.motion)
+        if len(self.history) >= 15:
+            floor = float(np.percentile(self.history, 20))
+            self.threshold = max(self.base_threshold, self.noise_factor * floor)
         if self.motion > self.threshold:
             self.still_since = None
         elif self.still_since is None:

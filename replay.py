@@ -34,9 +34,9 @@ def main():
         t = i / fps
         for ev in tracker.process(frame, t):
             print(f"{t:7.2f}s  frame {i:5d}  {ev.kind:12s} {ev.text}")
-            if ev.kind in ("ambiguous", "promotion"):
-                best = ev.candidates[0].move
-                print(f"{'':22s}(replay auto-confirms {tracker.board.san(best)})")
+            if ev.kind in ("ambiguous", "promotion", "two_moves"):
+                best = ev.candidates[0]
+                print(f"{'':22s}(replay auto-confirms {tracker.describe(best)})")
                 tracker.confirm(best, t)
         if args.show:
             view = tracker.aligner.calibration().warp(frame)

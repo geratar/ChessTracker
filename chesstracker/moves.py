@@ -9,37 +9,40 @@ from dataclasses import dataclass, field
 
 import chess
 
-ACCEPT, AMBIGUOUS, NO_MOVE, PROMOTION = "accept", "ambiguous", "no_move", "promotion"
+ACCEPT, AMBIGUOUS, NO_MOVE, PROMOTION, TWO_MOVES = "accept", "ambiguous", "no_move", "promotion", "two_moves"
 
 
-def expected_changes(board, move):
-    """Squares whose contents differ after `move` is played on `board`."""
-    sq = {move.from_square, move.to_square}
-    if board.is_castling(move):
-        rank = chess.square_rank(move.from_square)
-        if board.is_kingside_castling(move):
-            sq |= {chess.square(7, rank), chess.square(5, rank)}
-            sq.add(chess.square(6, rank))
-        else:
-            sq |= {chess.square(0, rank), chess.square(3, rank)}
-            sq.add(chess.square(2, rank))
-    elif board.is_en_passant(move):
-        sq.add(chess.square(chess.square_file(move.to_square), chess.square_rank(move.from_square)))
-    return frozenset(sq)
+def changes_between(before, after):
+    """Squares whose contents differ between two positions."""
+    return frozenset(sq for sq in chess.SQUARES if before.piece_at(sq) != after.piece_at(sq))
+
+
+def expected_changes(board, *moves):
+    """Squares whose contents differ after playing `moves` on `board`
+    (covers captures, castling, en passant and promotion automatically)."""
+    after = board.copy(stack=False)
+    for m in moves:
+        after.push(m)
+    return changes_between(board, after)
 
 
 @dataclass
 class Candidate:
-    move: chess.Move
+    move: chess.Move                 # first (usually only) move
     score: float
     matched: int
     missing: int
     extra: int
+    moves: list = None               # full sequence (two entries when a move was missed)
+
+    def __post_init__(self):
+        if self.moves is None:
+            self.moves = [self.move]
 
 
 @dataclass
 class MatchResult:
-    status: str                      # ACCEPT | AMBIGUOUS | NO_MOVE | PROMOTION
+    status: str                      # ACCEPT | AMBIGUOUS | NO_MOVE | PROMOTION | TWO_MOVES
     move: chess.Move = None          # set for ACCEPT (and PROMOTION: queen by default)
     candidates: list = field(default_factory=list)   # best first
 
@@ -49,7 +52,7 @@ def _near(sq, squares):
 
 
 def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, min_score=1.5,
-               min_margin=1.0, max_candidates=5):
+               min_margin=1.0, max_candidates=5, allow_two=True):
     """Rank legal moves by how well they explain `changed` (iterable of squares).
 
     score = matched - w_missing * missing - w_extra * extra
@@ -64,16 +67,16 @@ def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, mi
     if len(changed) < 2:
         return MatchResult(NO_MOVE)
 
-    scored = []
-    for mv in board.legal_moves:
-        exp = expected_changes(board, mv)
+    def score(moves):
+        exp = expected_changes(board, *moves)
         matched = len(exp & changed)
         missing = len(exp - changed)
         extras = changed - exp
         near = sum(1 for q in extras if _near(q, exp))
-        extra = len(extras)
-        s = matched - w_missing * missing - w_extra * (extra - near) - w_extra_near * near
-        scored.append(Candidate(mv, s, matched, missing, extra))
+        s = matched - w_missing * missing - w_extra * (len(extras) - near) - w_extra_near * near
+        return Candidate(moves[0], s, matched, missing, len(extras), list(moves))
+
+    scored = [score([mv]) for mv in board.legal_moves]
 
     # promotions to different pieces look identical: collapse to one entry (queen)
     by_squares = {}
@@ -84,6 +87,10 @@ def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, mi
     ranked = sorted(by_squares.values(), key=lambda c: c.score, reverse=True)[:max_candidates]
 
     if not ranked or ranked[0].score < min_score:
+        if allow_two and len(changed) >= 3:
+            two = _match_two(board, changed, score, ranked, min_score, max_candidates)
+            if two:
+                return MatchResult(TWO_MOVES, candidates=two)
         return MatchResult(NO_MOVE, candidates=ranked)
     best = ranked[0]
     if len(ranked) > 1 and best.score - ranked[1].score < min_margin:
@@ -91,3 +98,32 @@ def match_move(board, changed, w_missing=1.0, w_extra=0.5, w_extra_near=0.25, mi
     if best.move.promotion:
         return MatchResult(PROMOTION, move=best.move, candidates=ranked)
     return MatchResult(ACCEPT, move=best.move, candidates=ranked)
+
+
+def _match_two(board, changed, score, singles, min_score, max_candidates):
+    """A move was missed: look for two consecutive moves that explain the changes.
+    Only first moves touching a changed square are tried (keeps it fast)."""
+    out = []
+    for first in board.legal_moves:
+        if first.from_square not in changed and first.to_square not in changed:
+            continue
+        b2 = board.copy(stack=False)
+        b2.push(first)
+        for second in b2.legal_moves:
+            if second.from_square not in changed and second.to_square not in changed:
+                continue
+            if second.promotion not in (None, chess.QUEEN) or first.promotion not in (None, chess.QUEEN):
+                continue
+            c = score([first, second])
+            if c.score >= min_score:
+                out.append(c)
+    out.sort(key=lambda c: c.score, reverse=True)
+    return out[:max_candidates]
+
+
+def candidates_for_square(board, square, max_candidates=5):
+    """Moves that land on (preferred) or leave `square`: used when only one
+    square visibly changed, e.g. because the other one is hidden behind pieces."""
+    to = [m for m in board.legal_moves if m.to_square == square and m.promotion in (None, chess.QUEEN)]
+    frm = [m for m in board.legal_moves if m.from_square == square and m.promotion in (None, chess.QUEEN)]
+    return [Candidate(m, 0.0, 1, 1, 0) for m in (to + frm)[:max_candidates]]

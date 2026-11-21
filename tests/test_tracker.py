@@ -153,3 +153,36 @@ def test_undo_restores_reference(tracker):
     c.hand(tracker, img("01_hand_a"), img("01_hand_b"))
     ev = c.feed(tracker, img("02_after_e4"), 2.0)
     assert [e.text for e in ev if e.kind == "move"] == ["e4"]
+
+
+def test_noisy_camera_still_becomes_stable():
+    from chesstracker.detector import MotionGate
+    rng = np.random.default_rng(0)
+    base = img("00_start")
+    gate = MotionGate(motion_threshold=4.0, stable_seconds=0.6)
+    stable = False
+    for i in range(int(6 * FPS)):
+        noise = rng.normal(0, 40, base.shape)
+        frame = np.clip(base + noise, 0, 255).astype(np.uint8)
+        stable = gate.update(frame, i / FPS)
+    assert gate.threshold > 4.0 and stable
+
+
+def test_confirm_two_moves(tracker):
+    c = Clock()
+    c.feed(tracker, img("00_start"), 1.5)
+    ev = tracker.confirm([chess.Move.from_uci("c2c4"), chess.Move.from_uci("d7d5")])
+    assert ev.text == "c4 d5"
+    assert tracker.board.fullmove_number == 2
+
+
+def test_missed_move_is_offered_as_pair(tracker):
+    # skip the e4 frame: the tracker sees e4 and d5 at once and must ask, not guess
+    c = Clock()
+    c.feed(tracker, img("00_start"), 1.5)
+    c.hand(tracker, img("01_hand_a"), img("01_hand_b"))
+    ev = c.feed(tracker, img("04_after_d5"), 2.0)
+    assert "move" not in kinds(ev)
+    asks = [e for e in ev if e.kind == "two_moves"]
+    assert asks and tracker.describe(asks[0].candidates[0]) == "e4 d5"
+    assert tracker.waiting_for_user

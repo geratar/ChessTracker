@@ -83,3 +83,26 @@ def test_board_is_not_modified():
     fen = b.fen()
     match_move(b, sqs("e2", "e4"))
     assert b.fen() == fen
+
+
+def test_two_moves_when_one_was_missed():
+    from chesstracker.moves import TWO_MOVES
+    b = chess.Board()
+    r = match_move(b, sqs("c2", "c4", "d7", "d5"))
+    assert r.status == TWO_MOVES
+    first = r.candidates[0]
+    assert [b.san(first.moves[0])] == ["c4"] and first.moves[1] == chess.Move.from_uci("d7d5")
+
+
+def test_two_moves_with_hidden_origin_square():
+    # c2 hidden behind other pieces: c4 d7 d5 (+ occlusion neighbours c5 c6) changed
+    from chesstracker.moves import TWO_MOVES
+    r = match_move(chess.Board(), sqs("c4", "c5", "d5", "c6", "d7"))
+    assert r.status == TWO_MOVES
+    assert any(c.moves == [chess.Move.from_uci("c2c4"), chess.Move.from_uci("d7d5")] for c in r.candidates)
+
+
+def test_candidates_for_single_square():
+    from chesstracker.moves import candidates_for_square
+    c = candidates_for_square(chess.Board(), S("c4"))
+    assert [x.move.uci() for x in c] == ["c2c4"]

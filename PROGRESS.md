@@ -23,6 +23,12 @@
 - On the first recording it detects e4 d5 exd5 c6 with no false moves; ~1 s after the hand leaves.
 - 35 tests pass (incl. real-frame regression, hands, lighting, board shift, undo, duplicates).
 
+## Mac live test 1 (10:18)
+- Camera now higher, board far away, strong sunlight patches. First move (c4) was not registered;
+  after black's d5 it reported "no legal move matches: c4 c5 d5 c6 d7" and got stuck.
+- Fixes: missed-move recovery (offers two-move sequences to confirm), a single strongly changed square
+  asks instead of being silently absorbed, motion threshold adapts to camera noise. 41 tests pass.
+
 ## Next
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,
   pieces adjusted without moving). Tune thresholds on it and add it to the fixtures.

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 import chess
 
 from .detector import Aligner, MotionGate, change_scores, changed_squares, square_features
-from .moves import ACCEPT, AMBIGUOUS, NO_MOVE, PROMOTION, match_move
+from .moves import ACCEPT, AMBIGUOUS, PROMOTION, TWO_MOVES, MatchResult, candidates_for_square, match_move
 
 TRACKER_DEFAULTS = {
     "motion_threshold": 4.0,       # mean abs diff on a 160x90 frame; ~3 when still, >6 with hands
@@ -21,6 +21,7 @@ TRACKER_DEFAULTS = {
     "min_change_score": 25.0,
     "median_factor": 3.0,
     "rel_to_max": 0.4,
+    "strong_single_factor": 2.0,   # one square changed this strongly => probably a move, ask
 }
 
 
@@ -96,13 +97,24 @@ class Tracker:
                                 squares=set(changed)))
         result = match_move(self.board, changed)
         if result.status == ACCEPT:
-            events.append(self._apply(result.move, feats, t))
-        elif result.status in (AMBIGUOUS, PROMOTION):
+            events.append(self._apply([result.move], feats, t))
+        elif result.status in (AMBIGUOUS, PROMOTION, TWO_MOVES):
             self.pending = result
-            kind = "promotion" if result.status == PROMOTION else "ambiguous"
-            names = ", ".join(self.board.san(c.move) for c in result.candidates[:3])
-            events.append(Event(kind, t, f"Please confirm: {names}", candidates=result.candidates,
-                                squares=set(changed)))
+            kind = {AMBIGUOUS: "ambiguous", PROMOTION: "promotion", TWO_MOVES: "two_moves"}[result.status]
+            events.append(Event(kind, t, "Please confirm: " + ", ".join(
+                self.describe(c) for c in result.candidates[:3]), candidates=result.candidates,
+                squares=set(changed)))
+        elif len(changed) == 1 and self._strong(changed):
+            sq = next(iter(changed))
+            cands = candidates_for_square(self.board, sq)
+            if cands:
+                self.pending = MatchResult(AMBIGUOUS, candidates=cands)
+                events.append(Event("ambiguous", t, f"Only {chess.square_name(sq)} changed clearly. Which move? " +
+                                    ", ".join(self.describe(c) for c in cands[:3]),
+                                    candidates=cands, squares=set(changed)))
+            else:
+                self._report(events, Event("unrecognized", t,
+                             f"{chess.square_name(sq)} changed but no legal move uses it", squares=set(changed)))
         elif len(changed) <= 1:
             self.unchanged_since = self.unchanged_since or t
         else:
@@ -111,12 +123,28 @@ class Tracker:
                          " ".join(chess.square_name(q) for q in sorted(changed)), squares=set(changed)))
         return events
 
-    def confirm(self, move, t=0.0):
-        """User picked a move (from candidates or typed). Applies it if legal."""
-        if move not in self.board.legal_moves:
-            raise ValueError(f"Illegal move {move.uci()} in {self.board.fen()}")
+    def describe(self, candidate):
+        """SAN text for a candidate (one or two moves)."""
+        b = self.board.copy(stack=False)
+        out = []
+        for m in candidate.moves:
+            out.append(b.san(m))
+            b.push(m)
+        return " ".join(out)
+
+    def confirm(self, moves, t=0.0):
+        """User picked a move, a list of moves, or a candidate. Applies them if legal."""
+        if hasattr(moves, "moves"):
+            moves = moves.moves
+        if isinstance(moves, chess.Move):
+            moves = [moves]
+        b = self.board.copy(stack=False)
+        for m in moves:
+            if m not in b.legal_moves:
+                raise ValueError(f"Illegal move {m.uci()} in {b.fen()}")
+            b.push(m)
         self.pending = None
-        return self._apply(move, self.last_feats, t)
+        return self._apply(moves, self.last_feats, t)
 
     def reject(self):
         """User says nothing happened: keep the position and treat the current view as the reference."""
@@ -135,14 +163,22 @@ class Tracker:
         return move
 
     # --- internals ---------------------------------------------------------
-    def _apply(self, move, feats, t):
-        san = self.board.san(move)
-        self.board.push(move)
-        self.ref_history.append(self.ref_feats)
+    def _apply(self, moves, feats, t):
+        sans = []
+        for m in moves:
+            sans.append(self.board.san(m))
+            self.board.push(m)
+            self.ref_history.append(self.ref_feats)
         self.ref_feats = feats
         self.reported = None
         self.unchanged_since = None
-        return Event("move", t, san, move=move)
+        return Event("move", t, " ".join(sans), move=moves[-1])
+
+    def _strong(self, changed):
+        if self.last_scores is None:
+            return False
+        bar = self.s["strong_single_factor"] * self.s["min_change_score"]
+        return any(self.last_scores[7 - chess.square_rank(q), chess.square_file(q)] >= bar for q in changed)
 
     def _report(self, events, ev):
         key = (ev.kind, frozenset(ev.squares))
@@ -153,7 +189,7 @@ class Tracker:
 
     def _maybe_absorb(self, changed, feats, t, events):
         """Slowly follow lighting drift and nudged pieces while nothing meaningful changed."""
-        if len(changed) <= 1:
+        if len(changed) == 0 or (len(changed) == 1 and not self._strong(changed)):
             self.unchanged_since = self.unchanged_since or t
             if t - self.unchanged_since >= self.s["absorb_seconds"]:
                 self.ref_feats = feats

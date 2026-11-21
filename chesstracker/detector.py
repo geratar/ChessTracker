@@ -14,9 +14,15 @@ from collections import deque
 import cv2
 import numpy as np
 
-from .calibration import Calibration
+from .calibration import Calibration, order_clockwise
 
 SQUARE_NAMES = [f"{'abcdefgh'[f]}{8 - row}" for row in range(8) for f in range(8)]  # row-major, a8 first
+
+
+def min_square_px(corners):
+    """Shortest board edge in camera pixels / 8: the size of the smallest square."""
+    pts = order_clockwise(corners)
+    return min(float(np.linalg.norm(pts[i] - pts[(i + 1) % 4])) for i in range(4)) / 8
 
 
 class Aligner:
@@ -25,6 +31,8 @@ class Aligner:
     def __init__(self, cal, margin_px=40, max_shift_px=25):
         self.cal = cal
         pts = np.asarray(cal.corners, dtype=np.float32)
+        # A chessboard repeats every square, so a shift near one square is a false lock.
+        max_shift_px = min(max_shift_px, 0.35 * min_square_px(cal.corners))
         self.x0, self.y0 = (pts.min(0) - margin_px).astype(int)
         self.x1, self.y1 = (pts.max(0) + margin_px).astype(int)
         self.max_shift = max_shift_px

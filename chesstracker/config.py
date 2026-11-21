@@ -8,8 +8,8 @@ CONFIG_PATH = ROOT / "config.json"
 DEFAULTS = {
     "camera_index": 0,
     "camera_backend": "auto",      # auto | avfoundation | dshow | msmf | v4l2 | any
-    "frame_width": 1280,
-    "frame_height": 720,
+    "frame_width": 1920,      # ask for 1080p: more pixels per square; the camera gives what it can
+    "frame_height": 1080,
     "max_cameras_to_scan": 5,
     "reconnect_interval_s": 2.0,
     "warp_size_px": 640,            # size of the top-down board image

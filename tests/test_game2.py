@@ -1,5 +1,7 @@
 """Regression test on the user's second (Mac) setup: camera at the side, pieces
-lean onto the neighbouring file. Every move must be found without asking."""
+lean onto the neighbouring file. Every move must be found without asking.
+The hand frames here look "still" to the motion gate, so this also checks that
+frame averaging never blends a hand into the picture used to decide."""
 from pathlib import Path
 
 import cv2

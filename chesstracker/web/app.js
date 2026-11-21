@@ -356,6 +356,9 @@ async function poll() {
     if (!hasCal && warpOn) { $("warpImg").removeAttribute("src"); warpOn = false; }
     const oh = $("orientHint");
     oh.textContent = S.calibration.orientation_ok === false ? "a1 looks like a light square: press Rotate." : "";
+    const px = S.calibration.square_px, fs = S.camera.frame_size;
+    $("detailHint").textContent = px ? `Board detail: ${px} pixels per square` + (fs ? ` (camera ${fs[0]}×${fs[1]})` : "") +
+      (px >= 50 ? ". Good." : px >= 30 ? ". OK." : ". Low: moves may be missed. Mark the corners tightly, or bring the camera closer if you can.") : "";
     if (game) renderReplay.lastTheme !== S.settings.theme + S.settings.flipped && (renderReplay.lastTheme = S.settings.theme + S.settings.flipped, renderReplay());
   } catch (e) { $("status").textContent = "Lost connection to the app. Is its window still open?"; }
   setTimeout(poll, 400);

@@ -62,6 +62,16 @@
 - Recording 2: all 8 moves (e4 e5 Nf3 d5 exd5 Qxd5 d4 exd4) found with zero questions; recording 1
   unchanged. Added as fixtures/game2 regression test. 62 tests pass.
 
+## Camera can't move closer (11:30): more detail in software
+- Camera now asks for 1080p (MJPG on Windows/Linux), was 720p: ~2.25x pixels per square if the
+  camera supports it. Old 720p calibrations are rescaled automatically (same aspect ratio).
+- Decisions use the mean of the last 5 agreeing still frames (less sensor noise). The window
+  resets whenever the changed-square set changes, so a flickering hand is never averaged in.
+- Aligner max shift capped at 0.35 square (a chessboard repeats every square: false locks).
+- Setup shows "Board detail: N pixels per square" (good >= 50, low < 30).
+- Replaying both clips at 0.67x / 0.5x / 0.4x resolution: lower resolution gave extra questions,
+  so more pixels does help. 63 tests pass.
+
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,

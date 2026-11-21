@@ -5,6 +5,7 @@ board has been still for a while, the observed square changes are consistent,
 and exactly one legal move explains them. Otherwise the tracker reports and
 waits (or asks for confirmation); it never guesses.
 """
+from collections import deque
 from dataclasses import dataclass, field
 
 import chess
@@ -25,6 +26,7 @@ TRACKER_DEFAULTS = {
     "strong_single_factor": 2.0,   # one square changed this strongly => probably a move, ask
     "rel_margin": 0.2,             # best move must explain this much more of the change than the next
     "piece_height": 1.6,           # tallest piece height in square widths (0 = ignore camera geometry)
+    "average_frames": 5,           # average this many still frames to cut camera noise (1 = off)
 }
 
 
@@ -58,6 +60,8 @@ class Tracker:
         self.last_feats = None
         self.last_scores = None
         self.debug = None              # optional callable(str) for diagnostics
+        self._avg = None               # running mean of the warped board while still
+        self._avg_shift = None
 
     # --- public ------------------------------------------------------------
     @property
@@ -71,10 +75,12 @@ class Tracker:
         if not stable:
             self.last_changed, self.changed_since, self.evaluated = None, None, False
             self.unchanged_since = None
+            self._avg = None
             return events
 
         self.aligner.update(frame)
-        feats = square_features(self.aligner.calibration().warp(frame))
+        warped = self.aligner.calibration().warp(frame)
+        feats = square_features(warped)
         self.last_feats = feats
         if self.ref_feats is None:
             self.ref_feats = feats
@@ -85,19 +91,25 @@ class Tracker:
 
         scores = change_scores(self.ref_feats, feats)
         self.last_scores = scores
-        changed, bar = changed_squares(scores, self.s["min_change_score"], self.s["median_factor"],
-                                       self.s["rel_to_max"], return_bar=True)
-        self.last_strengths = {chess.parse_square(SQUARE_NAMES[i]): float(v) / bar
-                               for i, v in enumerate(scores.ravel())}
-        changed = frozenset(chess.parse_square(n) for n in changed)
+        changed = self._changed(scores)
 
         if changed != self.last_changed:
             self.last_changed, self.changed_since, self.evaluated = changed, t, False
+            self._avg = None           # only average frames that agree on what changed
+            self._remember(warped)
             return events
+        self._remember(warped)
         if self.evaluated or t - self.changed_since < self.s["confirm_seconds"]:
             return self._maybe_absorb(changed, feats, t, events)
 
         self.evaluated = True
+        if self._avg is not None and len(self._avg) > 1:
+            # Decide on the mean of the agreeing still frames: same picture, less sensor noise.
+            feats = square_features((sum(self._avg) / len(self._avg)).astype(np.uint8))
+            self.last_feats = feats
+            scores = change_scores(self.ref_feats, feats)
+            self.last_scores = scores
+            changed = self._changed(scores)
         if self.debug:
             flat = scores.ravel()
             top = sorted(range(64), key=lambda i: -flat[i])[:6]
@@ -178,7 +190,29 @@ class Tracker:
         self.last_changed, self.evaluated = None, False
         return move
 
+    def retarget(self, cal):
+        """Same board, new camera resolution: keep the game and the reference image."""
+        self.aligner = Aligner(cal)
+        self.gate = MotionGate(self.s["motion_threshold"], self.s["stable_seconds"])
+        self._avg = None
+
     # --- internals ---------------------------------------------------------
+    def _changed(self, scores):
+        changed, bar = changed_squares(scores, self.s["min_change_score"], self.s["median_factor"],
+                                       self.s["rel_to_max"], return_bar=True)
+        self.last_strengths = {chess.parse_square(SQUARE_NAMES[i]): float(v) / bar
+                               for i, v in enumerate(scores.ravel())}
+        return frozenset(chess.parse_square(n) for n in changed)
+
+    def _remember(self, warped):
+        """Keep the last few warped frames of the current still period."""
+        n = max(1, int(self.s["average_frames"]))
+        shift = self.aligner.shift
+        if (self._avg is None or self._avg_shift is None or
+                max(abs(shift[0] - self._avg_shift[0]), abs(shift[1] - self._avg_shift[1])) > 0.5):
+            self._avg, self._avg_shift = deque(maxlen=n), shift
+        self._avg.append(warped.astype(np.float32))
+
     def _apply(self, moves, feats, t):
         sans = []
         for m in moves:

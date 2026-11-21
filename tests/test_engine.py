@@ -117,3 +117,24 @@ def test_rename_keeps_moves_and_result(engine):
         engine.rename_game(gid, "  ")
     with pytest.raises(ValueError):
         engine.rename_game("../x.pgn", "a")
+
+
+def test_corners_follow_a_higher_camera_resolution(tmp_path):
+    """Calibrated at 720p, camera now gives 1080p: corners scale, no recalibration needed."""
+    import cv2, json
+    shutil.copy(FIX / "calibration.json", tmp_path / "calibration.json")
+    old = json.loads((tmp_path / "calibration.json").read_text())
+    img = cv2.imread(str(FIX / "00_start.jpg"))
+    h, w = img.shape[:2]
+    big = cv2.resize(img, (w * 3 // 2, h * 3 // 2))
+    cv2.imwrite(str(tmp_path / "big.jpg"), big)
+    e = Engine(source=str(tmp_path / "big.jpg"), data_dir=tmp_path)
+    try:
+        time.sleep(0.3)
+        s = e.state()
+        assert s["camera"]["frame_size"] == [w * 3 // 2, h * 3 // 2]
+        for (x0, y0), (x1, y1) in zip(old["corners"], s["calibration"]["corners"]):
+            assert abs(x1 - x0 * 1.5) < 1 and abs(y1 - y0 * 1.5) < 1
+        assert s["calibration"]["square_px"] > 0
+    finally:
+        e.shutdown()

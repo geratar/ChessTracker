@@ -207,3 +207,4 @@ def test_person_moving_beside_the_board_does_not_block_detection(tracker):
         ev += tracker.process(with_person(img("02_after_e4")), c.t)
         c.t += 1 / FPS
     assert [e.text for e in ev if e.kind == "move"] == ["e4"]
+

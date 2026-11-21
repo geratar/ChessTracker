@@ -17,6 +17,7 @@ No neural nets, paid APIs, databases or frameworks unless simpler methods demons
 - `chesstracker/overlay.py`: debug drawing
 - `chesstracker/moves.py`: legal-move matching from a set of changed squares (accept / ambiguous / no_move / promotion)
 - `chesstracker/detector.py`: frame alignment (phase correlation), motion gate, per-square change scores (L + edges)
+- Camera asks for 1080p; engine rescales corners if the resolution changes. Tracker decides on the mean of agreeing still frames
 - `chesstracker/tracker.py`: state machine: still -> consistent changes -> match_move -> apply / ask / report; undo
 - `chesstracker/board_view.py`: 2D board drawing
 - `app.py` + `chesstracker/engine.py` + `chesstracker/web/`: main app. Local HTTP server (stdlib), browser UI

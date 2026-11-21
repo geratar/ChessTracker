@@ -15,6 +15,7 @@ import numpy as np
 
 from .analysis import Analyzer
 from .calibration import Calibration, orientation_check
+from .detector import min_square_px
 from .camera import FrameSource, list_cameras
 from .config import load_config, resolve
 from .overlay import draw_board_overlay, draw_camera_overlay
@@ -61,9 +62,11 @@ class Engine:
         self.corners = []
         self.rotation = 0
         self.saved_calibration = None
+        self.corners_size = None       # frame size the corners were clicked at
         try:
             c = Calibration.load(self.cal_path)
             self.corners, self.rotation, self.saved_calibration = [list(p) for p in c.corners], c.rotation, c
+            self.corners_size = list(c.frame_size) or None
         except (FileNotFoundError, ValueError):
             pass
         self.mode = "setup"            # setup | tracking
@@ -117,6 +120,20 @@ class Engine:
     def set_corners(self, corners):
         with self.lock:
             self.corners = [[float(x), float(y)] for x, y in corners][:4]
+            self.corners_size = list(self.frame_size) if self.frame_size else None
+
+    def _rescale_corners(self):
+        """Camera now delivers a different resolution: move the corners with it."""
+        (w0, h0), (w1, h1) = self.corners_size, self.frame_size
+        if self.corners and abs(w0 / h0 - w1 / h1) < 0.02:   # same picture, more pixels
+            self.corners = [[x * w1 / w0, y * h1 / h0] for x, y in self.corners]
+            self._debug(f"camera resolution {w0}x{h0} -> {w1}x{h1}: corners rescaled")
+            if self.tracker:
+                self.tracker.retarget(self.calibration())
+        elif self.corners:
+            self.corners = []
+            self._set_status("The camera's picture shape changed. Please mark the board corners again.", "warn")
+        self.corners_size = list(self.frame_size)
 
     def rotate(self):
         with self.lock:
@@ -358,7 +375,8 @@ class Engine:
                            "frame_size": self.frame_size},
                 "calibration": {"corners": self.corners, "rotation": self.rotation,
                                 "saved": self.saved_calibration is not None,
-                                "orientation_ok": self._orientation_ok(cal)},
+                                "orientation_ok": self._orientation_ok(cal),
+                                "square_px": round(min_square_px(self.corners)) if len(self.corners) == 4 else None},
                 "status": self.status, "status_kind": self.status_kind,
                 "fen": board.fen(),
                 "lastmove": board.peek().uci() if board.move_stack else None,
@@ -403,6 +421,8 @@ class Engine:
             with self.lock:
                 self.frame = frame
                 self.frame_size = [frame.shape[1], frame.shape[0]]
+                if self.corners_size and self.corners_size != self.frame_size:
+                    self._rescale_corners()
                 if self.writer and now >= self._rec_next:   # steady 15 fps in the file
                     self.writer.write(frame)
                     self._rec_next = max(self._rec_next + 1 / 15, now - 0.2)

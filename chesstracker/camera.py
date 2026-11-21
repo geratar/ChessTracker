@@ -3,6 +3,8 @@ import platform
 import time
 from pathlib import Path
 
+import sys
+
 import cv2
 
 _BACKENDS = {
@@ -93,6 +95,8 @@ class FrameSource:
             if self.cap is None:
                 self.connected = False
                 return
+            if sys.platform != "darwin":   # USB cameras send 1080p fast only as MJPG
+                self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
             if self.width:
                 self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
             if self.height:

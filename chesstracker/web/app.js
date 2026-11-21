@@ -113,6 +113,10 @@ function renderPlay() {
     }
   } else { ask.classList.add("hidden"); ask.dataset.key = ""; }
   renderMoves($("moveList"), S.moves, S.moves.length - 1);
+  const playing = S.mode === "tracking";
+  ["finishBtn", "fixBtn", "enterBtn", "undoBtn"].forEach(id => $(id).classList.toggle("hidden", !playing));
+  $("saveBtn").classList.add("hidden");               // saving happens through Finish game
+  $("newBtn").classList.toggle("hidden", playing);    // only after the game is finished
   $("recBtn").textContent = S.recording ? "⏹ Stop recording" : "⏺ Record video";
   $("recBtn").classList.toggle("danger", S.recording);
   const b = $("stillBadge");
@@ -155,8 +159,9 @@ $("recBtn").onclick = async () => {
   const r = await post("/api/record");
   if (!r.recording) alert("Video saved:\n" + r.file + "\n\nYou'll find it in the ChessTracker folder, inside data > recordings.");
 };
-$("newBtn").onclick = () => guardUnsaved("Start a new game? Save this one first?", () => {
-  if (S.unsaved || confirm("Start a new game? Set up the pieces in the starting position.")) post("/api/new_game");
+$("newBtn").onclick = () => guardUnsaved("Start a new game? Save this one first?", async () => {
+  if (!S.calibration.saved) { showTab("setup", true); return; }
+  await post("/api/new_game");
 });
 $("flipBtn").onclick = () => post("/api/settings", { flipped: !S.settings.flipped });
 let afterSave = null, finishing = false;

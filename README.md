@@ -22,7 +22,7 @@ Windows: double-click **ChessTracker.bat** instead.
   - **Enter a move**: the camera missed a move: click it on the board.
   - **Undo** takes back the last move (put the pieces back too). **Flip board** puts Black at the bottom.
   - **Finish game**: choose who won, then "Finish & save" or "Save & analyze" (opens it in the Library).
-  - **Save game** stores it in the Library with a name, the result (who won / draw) and today's date.
+  - The game is saved to the Library (name, result, date) through Finish game; **New game** appears after that.
     If you leave the game or start a new one with unsaved moves, the app asks whether to save first.
 - **Library**: open a saved game, step through it with the arrows (or keyboard left/right), Auto-play, copy the PGN.
   **Analyze with Stockfish** evaluates every position: evaluation bar, evaluation graph (click to jump),

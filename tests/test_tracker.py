@@ -186,3 +186,24 @@ def test_missed_move_is_offered_as_pair(tracker):
     asks = [e for e in ev if e.kind == "two_moves"]
     assert asks and tracker.describe(asks[0].candidates[0]) == "e4 d5"
     assert tracker.waiting_for_user
+
+
+def test_person_moving_beside_the_board_does_not_block_detection(tracker):
+    """Someone sitting next to the board moves all the time; only the board area matters."""
+    rng = np.random.default_rng(1)
+
+    def with_person(frame):
+        f = frame.copy()
+        f[250:720, 0:180] = rng.integers(0, 255, (470, 180, 3), dtype=np.uint8)
+        return f
+
+    c = Clock()
+    for _ in range(int(1.5 * FPS)):
+        tracker.process(with_person(img("00_start")), c.t)
+        c.t += 1 / FPS
+    c.hand(tracker, img("01_hand_a"), img("01_hand_b"))
+    ev = []
+    for _ in range(int(2.5 * FPS)):
+        ev += tracker.process(with_person(img("02_after_e4")), c.t)
+        c.t += 1 / FPS
+    assert [e.text for e in ev if e.kind == "move"] == ["e4"]

@@ -70,6 +70,10 @@ class Engine:
         self.status = "Choose your camera"
         self.status_kind = "info"
         self.log = []
+        self.writer = None
+        self.rec_path = None
+        self.debug_path = data_dir / "debug.log"
+        self.data_dir = data_dir
         self.running = True
         self.thread = threading.Thread(target=self._loop, daemon=True)
         self._open_camera(source if source is not None else self.camera_index)
@@ -131,6 +135,9 @@ class Engine:
                 raise ValueError("Calibrate the board first")
             board = chess.Board(fen) if fen else chess.Board()
             self.tracker = Tracker(cal, self.cfg, board)
+            self.tracker.debug = self._debug
+            self._debug(f"--- start tracking fen={board.fen()} corners={cal.corners} rot={cal.rotation} "
+                        f"frame={self.frame_size}")
             self.mode = "tracking"
             self._set_status("Keep hands off the board for a moment...", "info")
 
@@ -205,6 +212,33 @@ class Engine:
         if move not in board.legal_moves:
             raise ValueError(f"{text} is not a legal move here")
         return move
+
+    def _debug(self, text):
+        try:
+            self.debug_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.debug_path, "a") as f:
+                f.write(time.strftime("%H:%M:%S ") + text + "\n")
+        except OSError:
+            pass
+
+    def toggle_recording(self):
+        """Record the raw camera video (for diagnosing detection problems)."""
+        with self.lock:
+            if self.writer:
+                self.writer.release()
+                self.writer = None
+                self._debug(f"recording stopped {self.rec_path}")
+                return {"recording": False, "file": str(self.rec_path)}
+            if self.frame is None:
+                raise ValueError("No camera picture yet")
+            d = self.data_dir / "recordings"
+            d.mkdir(parents=True, exist_ok=True)
+            self.rec_path = d / time.strftime("rec_%Y%m%d_%H%M%S.mp4")
+            h, w = self.frame.shape[:2]
+            self.writer = cv2.VideoWriter(str(self.rec_path), cv2.VideoWriter_fourcc(*"mp4v"), 15, (w, h))
+            self._rec_next = time.monotonic()
+            self._debug(f"recording started {self.rec_path}")
+            return {"recording": True, "file": str(self.rec_path)}
 
     def _set_status(self, text, kind):
         self.status, self.status_kind = text, kind
@@ -298,6 +332,7 @@ class Engine:
                 "pending_kind": (t.pending.status if t and t.pending else None),
                 "still": bool(t and t.gate.is_stable(time.monotonic())),
                 "settings": self.settings,
+                "recording": self.writer is not None,
                 "themes": list(THEMES),
             }
 
@@ -331,6 +366,9 @@ class Engine:
             with self.lock:
                 self.frame = frame
                 self.frame_size = [frame.shape[1], frame.shape[0]]
+                if self.writer and now >= self._rec_next:   # steady 15 fps in the file
+                    self.writer.write(frame)
+                    self._rec_next = max(self._rec_next + 1 / 15, now - 0.2)
                 if self.mode == "tracking" and self.tracker:
                     for ev in self.tracker.process(frame, now):
                         self._on_event(ev)
@@ -350,6 +388,7 @@ class Engine:
                 time.sleep(0.01)
 
     def _on_event(self, ev):
+        self._debug(f"event {ev.kind}: {ev.text}")
         self.log.append((time.strftime("%H:%M:%S"), ev.kind, ev.text))
         self.log = self.log[-50:]
         if ev.kind == "move":
@@ -364,5 +403,7 @@ class Engine:
 
     def shutdown(self):
         self.running = False
+        if self.writer:
+            self.writer.release()
         if self.src:
             self.src.release()

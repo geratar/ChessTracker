@@ -106,6 +106,8 @@ function renderPlay() {
     }
   } else { ask.classList.add("hidden"); ask.dataset.key = ""; }
   renderMoves($("moveList"), S.moves, S.moves.length - 1);
+  $("recBtn").textContent = S.recording ? "⏹ Stop recording" : "⏺ Record video";
+  $("recBtn").classList.toggle("danger", S.recording);
   const b = $("stillBadge");
   b.textContent = !S.camera.connected ? "Camera disconnected" : (S.mode !== "tracking" ? "" : (S.still ? "● board still" : "● movement"));
   b.style.color = S.still ? "#81b64c" : "#e6a23c";
@@ -142,6 +144,10 @@ window.addEventListener("keydown", (e) => { if (e.key === "Escape") endClick(); 
 $("fixBtn").onclick = () => { if (!S.moves.length) return alert("No move to fix yet."); startClick("fix"); };
 $("enterBtn").onclick = () => startClick("enter");
 $("undoBtn").onclick = () => post("/api/undo");
+$("recBtn").onclick = async () => {
+  const r = await post("/api/record");
+  if (!r.recording) alert("Video saved:\n" + r.file + "\n\nYou'll find it in the ChessTracker folder, inside data > recordings.");
+};
 $("newBtn").onclick = () => { if (confirm("Start a new game? Set up the pieces in the starting position.")) post("/api/new_game"); };
 $("flipBtn").onclick = () => post("/api/settings", { flipped: !S.settings.flipped });
 $("saveBtn").onclick = () => { if (!S.moves.length) return alert("No moves to save yet."); $("gameName").value = ""; $("saveDlg").showModal(); };

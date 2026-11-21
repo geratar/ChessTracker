@@ -101,6 +101,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/settings": lambda: e.update_settings(d.get("theme"), d.get("flipped")),
                 "/api/library/save": lambda: {"id": e.save_game(d.get("name"))},
                 "/api/library/delete": lambda: e.delete_game(d["id"]),
+                "/api/record": lambda: e.toggle_recording(),
             }
             if path not in actions:
                 return self._send(404, {"error": "not found"})

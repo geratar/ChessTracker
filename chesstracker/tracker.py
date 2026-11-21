@@ -8,6 +8,7 @@ waits (or asks for confirmation); it never guesses.
 from dataclasses import dataclass, field
 
 import chess
+import numpy as np
 
 from .detector import Aligner, MotionGate, change_scores, changed_squares, square_features
 from .moves import ACCEPT, AMBIGUOUS, PROMOTION, TWO_MOVES, MatchResult, candidates_for_square, match_move
@@ -18,7 +19,7 @@ TRACKER_DEFAULTS = {
     "confirm_seconds": 0.5,        # the same changed squares must persist this long after that
     "max_changed_squares": 8,      # more than this => hand, shadow or bumped board: wait
     "absorb_seconds": 3.0,         # unchanged board for this long => refresh reference (lighting drift)
-    "min_change_score": 25.0,
+    "min_change_score": 18.0,
     "median_factor": 3.0,
     "rel_to_max": 0.4,
     "strong_single_factor": 2.0,   # one square changed this strongly => probably a move, ask
@@ -53,6 +54,7 @@ class Tracker:
         self.unchanged_since = None
         self.last_feats = None
         self.last_scores = None
+        self.debug = None              # optional callable(str) for diagnostics
 
     # --- public ------------------------------------------------------------
     @property
@@ -62,7 +64,7 @@ class Tracker:
     def process(self, frame, t):
         """Feed one frame (BGR) captured at time t (seconds). Returns a list of Events."""
         events = []
-        stable = self.gate.update(frame, t)
+        stable = self.gate.update(frame, t, self.aligner.roi())
         if not stable:
             self.last_changed, self.changed_since, self.evaluated = None, None, False
             self.unchanged_since = None
@@ -91,6 +93,13 @@ class Tracker:
             return self._maybe_absorb(changed, feats, t, events)
 
         self.evaluated = True
+        if self.debug:
+            flat = scores.ravel()
+            top = sorted(range(64), key=lambda i: -flat[i])[:6]
+            names = "abcdefgh"
+            self.debug(f"t={t:.1f} eval changed={[chess.square_name(q) for q in sorted(changed)]} "
+                       f"top={[(names[i % 8] + str(8 - i // 8), round(float(flat[i]))) for i in top]} "
+                       f"median={float(np.median(flat)):.1f} motion_thr={self.gate.threshold:.1f}")
         if len(changed) > self.s["max_changed_squares"]:
             return self._report(events, Event("obstructed", t,
                                 f"{len(changed)} squares changed: hand, shadow or moved board? Waiting.",

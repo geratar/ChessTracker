@@ -34,8 +34,14 @@
   enter-move by clicking squares, confirmation buttons, save to library, replay. 46 tests pass;
   UI exercised end to end in headless Chrome on the recording.
 
+## Mac live test 2 (10:46): moves often missed
+- Likely cause: stillness was measured on the whole picture, and the player's body is in frame,
+  so the board rarely counted as still. Now only the board area (+margin) is watched.
+- Change threshold lowered 25 -> 18 for smaller/farther boards (first clip still exact).
+- Added Record video button and data/debug.log (every decision with top square scores).
+
 ## Next
-- User tests the app live on the Mac.
+- Get a live recording + debug.log from the Mac to confirm.
 - User raises the camera, recalibrates, records a longer clip (castling, capture, en passant if possible,
   pieces adjusted without moving). Tune thresholds on it and add it to the fixtures.
 - Then Phase 3 (GUI polish, manual correction, save/load/replay games).

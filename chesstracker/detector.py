@@ -39,6 +39,12 @@ class Aligner:
         g = cv2.cvtColor(frame[y0:y1, x0:x1], cv2.COLOR_BGR2GRAY).astype(np.float32)
         return g
 
+    def roi(self, grow=0.25):
+        """Board area plus a margin (hands reach in from the sides)."""
+        w, h = self.x1 - self.x0, self.y1 - self.y0
+        gx, gy = int(w * grow), int(h * grow)
+        return (self.x0 - gx, self.y0 - gy, self.x1 + gx, self.y1 + gy)
+
     def set_reference(self, frame):
         self.ref = self._crop(frame)
         self.win = cv2.createHanningWindow((self.ref.shape[1], self.ref.shape[0]), cv2.CV_32F)
@@ -81,7 +87,14 @@ class MotionGate:
         self.still_since = None
         self.motion = 0.0
 
-    def update(self, frame, t):
+    def update(self, frame, t, roi=None):
+        """roi=(x0, y0, x1, y1): only watch this area (the board), so people
+        moving elsewhere in the picture don't keep the board from counting as still."""
+        if roi is not None:
+            h, w = frame.shape[:2]
+            x0, y0, x1, y1 = max(roi[0], 0), max(roi[1], 0), min(roi[2], w), min(roi[3], h)
+            if x1 - x0 > 20 and y1 - y0 > 20:
+                frame = frame[y0:y1, x0:x1]
         small = cv2.GaussianBlur(cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (160, 90)), (3, 3), 0)
         small = small.astype(np.float32)
         self.motion = 0.0 if self.prev is None else float(np.abs(small - self.prev).mean())

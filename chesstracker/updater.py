@@ -39,6 +39,15 @@ def local_differs(path, sha, root=ROOT):
     return sha not in (blob_sha(data), blob_sha(data.replace(b"\r\n", b"\n")))
 
 
+def friendly_error(e):
+    msg = str(e)
+    if "404" in msg:
+        return "Can't see the code on GitHub: the repository is private. Make it public to enable updates."
+    if "403" in msg or "429" in msg or "rate limit" in msg.lower():
+        return "GitHub is busy (too many checks). Try again in an hour."
+    return f"Couldn't reach GitHub. Check the internet connection (or VPN) and try again. ({msg[:80]})"
+
+
 def check(root=ROOT, fetch=_fetch):
     """Return {available, files, commit, message, date} for the latest version on GitHub."""
     try:
@@ -46,10 +55,7 @@ def check(root=ROOT, fetch=_fetch):
         sha = info["sha"]
         tree = json.loads(fetch(f"https://api.github.com/repos/{REPO}/git/trees/{sha}?recursive=1"))
     except Exception as e:  # noqa: BLE001 - shown to the user
-        msg = str(e)
-        if "404" in msg:
-            msg = "The GitHub repository is private, so the app can't see updates. Make it public to enable this."
-        return {"available": False, "error": msg}
+        return {"available": False, "error": friendly_error(e)}
     files = [t["path"] for t in tree.get("tree", [])
              if t["type"] == "blob" and not _skip(t["path"]) and local_differs(t["path"], t["sha"], root)]
     c = info.get("commit", {})

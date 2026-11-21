@@ -13,6 +13,7 @@ import stat
 import subprocess
 import tarfile
 import threading
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -69,6 +70,8 @@ def _fetch(url, accept=None):
     try:
         with urllib.request.urlopen(req, context=_ssl_context(), timeout=60) as r:
             return r.read()
+    except urllib.error.HTTPError:
+        raise                      # the server answered (e.g. 404): curl would only hide that
     except Exception:
         if shutil.which("curl"):   # macOS system curl uses the system certificates
             return subprocess.run(["curl", "-fsSL", "-A", "ChessTracker", url], check=True,

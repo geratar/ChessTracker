@@ -57,3 +57,10 @@ def test_private_repo_gives_a_clear_message(tmp_path):
         raise RuntimeError("HTTP Error 404: Not Found")
     r = updater.check(tmp_path, fetch)
     assert not r["available"] and "private" in r["error"]
+
+
+def test_network_errors_are_explained(tmp_path):
+    def fetch(url, accept=None):
+        raise OSError("Command ['curl'] returned non-zero exit status 56.")
+    r = updater.check(tmp_path, fetch)
+    assert "internet" in r["error"]

@@ -36,9 +36,11 @@ SETTINGS_DEFAULTS = {"theme": "green", "flipped": False, "speed": "fast", "detec
 MAC_ALERT = "/System/Library/Sounds/Sosumi.aiff"
 
 
-def game_name(headers):
-    """The name the user gave a game, or "" (older saves used "Untitled game")."""
-    name = headers.get("Event", "").strip()
+def game_notes(g):
+    """The user's notes on a game (PGN game comment); older saves kept a name in Event."""
+    if g.comment.strip():
+        return g.comment.strip()
+    name = g.headers.get("Event", "").strip()
     return "" if name in ("?", "Untitled game") else name
 
 
@@ -353,8 +355,9 @@ class Engine:
             board = self.tracker.board
             game = chess.pgn.Game.from_board(board)
             game.headers["Result"] = result
-            name = (name or "").strip()       # optional: players + date identify a game
-            game.headers["Event"] = name or "?"
+            name = (name or "").strip()       # optional notes: players + date identify a game
+            game.headers["Event"] = "?"
+            game.comment = name
             game.headers["Date"] = time.strftime("%Y.%m.%d")
             game.headers["Time"] = time.strftime("%H:%M")
             for side in ("white", "black"):
@@ -364,7 +367,7 @@ class Engine:
                     game.headers[side.capitalize() + "Avatar"] = str(p["avatar"])
                     game.headers[side.capitalize() + "Id"] = p["id"]
             self.library_dir.mkdir(parents=True, exist_ok=True)
-            safe = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in name).strip()[:40] or "game"
+            safe = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in name.split("\n")[0]).strip()[:40] or "game"
             path = self.library_dir / f"{time.strftime('%Y%m%d_%H%M%S')}_{safe}.pgn"
             path.write_text(str(game) + "\n")
             self.saved_plies = len(board.move_stack)
@@ -379,7 +382,7 @@ class Engine:
                 g = chess.pgn.read_game(f)
             if g is None:
                 continue
-            out.append({"id": p.name, "name": game_name(g.headers),
+            out.append({"id": p.name, "notes": game_notes(g),
                         "date": g.headers.get("Date", "?").replace(".", "-"),
                         "time": g.headers.get("Time", ""),
                         "moves": len(list(g.mainline_moves())),
@@ -446,7 +449,7 @@ class Engine:
                 if outcome != "unfinished":
                     letter = outcome[0].upper()
                     st["streak"] = (st["streak"] + letter) if st["streak"].endswith(letter) or not st["streak"] else letter
-                st["recent"].append({"id": f.name, "name": game_name(h), "date": date,
+                st["recent"].append({"id": f.name, "notes": game_notes(g), "date": date,
                                      "colour": side, "opponent": opp, "result": outcome, "moves": len(moves)})
         out = []
         for st in stats.values():
@@ -488,7 +491,7 @@ class Engine:
             san = board.san(m)
             board.push(m)
             plies.append({"fen": board.fen(), "san": san, "uci": m.uci()})
-        return {"id": game_id, "name": game_name(g.headers), "date": g.headers.get("Date", ""),
+        return {"id": game_id, "notes": game_notes(g), "date": g.headers.get("Date", ""),
                 "result": g.headers.get("Result", "*"), "pgn": str(g), "plies": plies,
                 **self._game_players(g)}
 
@@ -500,15 +503,16 @@ class Engine:
         self.load_game(game_id)   # validates the id
         return self.analyzer.status(game_id)
 
-    def rename_game(self, game_id, name):
-        name = (name or "").strip()          # empty clears the name
+    def set_notes(self, game_id, notes):
+        notes = (notes or "").strip()[:2000]          # empty clears the notes
         p = (self.library_dir / game_id).resolve()
         if p.parent != self.library_dir.resolve() or not p.exists():
             raise ValueError("Game not found")
         with self.lock:
             with open(p) as f:
                 g = chess.pgn.read_game(f)
-            g.headers["Event"] = name or "?"
+            g.comment = notes
+            g.headers["Event"] = "?"
             p.write_text(str(g) + "\n")   # same file name, so the saved analysis stays linked
 
     def delete_game(self, game_id):

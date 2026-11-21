@@ -148,6 +148,10 @@
   head-to-head, streak, favourite first moves, recent games). Games now store WhiteId/BlackId. 87 tests.
 - Library list: players are the title, the game name (optional, no more "Untitled game") a muted subtitle;
   renaming to empty clears it. Move counts are full moves.
+- Library: "Rename" became "Add notes" (in-app dialog, multi-line, stored as the PGN game comment;
+  old Event names read as notes). All browser alert/confirm/prompt replaced by in-app dialogs, since
+  browsers can silence them (likely why Rename "did nothing"). Buttons disabled until a game is open;
+  Copy PGN shows "Copied". Every Library button checked in Playwright.
 
 ## Next
 - Get a live recording + debug.log from the Mac to confirm.

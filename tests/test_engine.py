@@ -52,7 +52,7 @@ def test_library_roundtrip(engine):
         engine.manual_move(m)
     gid = engine.save_game("Saturday game")
     games = engine.list_games()
-    assert games[0]["name"] == "Saturday game" and games[0]["moves"] == 3
+    assert games[0]["notes"] == "Saturday game" and games[0]["moves"] == 3
     g = engine.load_game(gid)
     assert [p["san"] for p in g["plies"][1:]] == ["e4", "e5", "Nf3"]
     assert g["plies"][0]["fen"] == chess.STARTING_FEN
@@ -106,20 +106,22 @@ def test_analysis_end_to_end(engine):
     assert res["evals"][-1]["cp"] == 10000
 
 
-def test_rename_keeps_moves_and_result(engine):
+def test_notes_keep_moves_and_result(engine):
     engine.start_tracking()
     engine.manual_move("d4")
-    gid = engine.save_game("Old name", "0-1")
-    engine.rename_game(gid, "Club night vs Anna")
+    gid = engine.save_game("Old notes", "0-1")
+    assert engine.load_game(gid)["notes"] == "Old notes"
+    engine.set_notes(gid, "Club night vs Anna\nI missed a fork on move 12")
     g = engine.load_game(gid)
-    assert g["name"] == "Club night vs Anna" and g["result"] == "0-1" and g["plies"][1]["san"] == "d4"
-    engine.rename_game(gid, "  ")                     # clears the name
-    assert engine.load_game(gid)["name"] == ""
+    assert g["notes"] == "Club night vs Anna\nI missed a fork on move 12"
+    assert g["result"] == "0-1" and g["plies"][1]["san"] == "d4"
+    engine.set_notes(gid, "  ")                     # clears the notes
+    assert engine.load_game(gid)["notes"] == ""
     with pytest.raises(ValueError):
-        engine.rename_game("../x.pgn", "a")
+        engine.set_notes("../x.pgn", "a")
     engine.start_tracking()
     unnamed = engine.save_game("")
-    assert engine.load_game(unnamed)["name"] == "" and "Untitled" not in engine.load_game(unnamed)["pgn"]
+    assert engine.list_games()[0]["notes"] == "" and "Untitled" not in engine.load_game(unnamed)["pgn"]
 
 
 def test_corners_follow_a_higher_camera_resolution(tmp_path):

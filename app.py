@@ -162,7 +162,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/library/save": lambda: {"id": e.save_game(d.get("name"), d.get("result", "*"))},
                 "/api/analyze": lambda: e.analyze(d["id"]),
                 "/api/library/delete": lambda: e.delete_game(d["id"]),
-                "/api/library/rename": lambda: e.rename_game(d["id"], d.get("name")),
+                "/api/library/notes": lambda: e.set_notes(d["id"], d.get("notes")),
                 "/api/record": lambda: e.toggle_recording(),
                 "/api/tap": lambda: e.tap(),
                 "/api/update/apply": lambda: apply_update(),

@@ -6,6 +6,25 @@ let dragIdx = null;
 let clickMode = null;      // null | "fix" | "enter"
 let clickFrom = null;
 
+// In-app message and confirm boxes. Browsers let users silence alert/confirm/prompt
+// ("don't allow this page to show more dialogs"), which made buttons look broken.
+function showMsg(text, withCancel) {
+  return new Promise((resolve) => {
+    const d = $("msgDlg");
+    $("msgText").textContent = text;
+    $("msgCancel").classList.toggle("hidden", !withCancel);
+    $("msgOk").textContent = withCancel ? "Yes" : "OK";
+    const done = (v) => { d.close(); resolve(v); };
+    $("msgOk").onclick = () => done(true);
+    $("msgCancel").onclick = () => done(false);
+    d.oncancel = (e) => { e.preventDefault(); done(false); };
+    if (d.open) d.close();
+    d.showModal();
+  });
+}
+window.alert = (text) => { showMsg(String(text)); };
+const askYesNo = (text) => showMsg(text, true);
+
 async function api(path, body) {
   const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
   const r = await fetch(path, opt);
@@ -393,7 +412,7 @@ async function loadLibrary() {
     const who = (p, fallback) => p ? `${avatarImg(p.avatar)}<span>${esc(p.name)}</span>` : `${avatarImg(null)}<span>${fallback}</span>`;
     // players are the title; a name, if given, is a quiet subtitle
     d.innerHTML = `<span class="res">${res}</span><div class="vs">${who(g.white, "Anonymous")}<small>vs</small>${who(g.black, "Anonymous")}</div>` +
-      (g.name ? `<div class="gname">${esc(g.name)}</div>` : "") + `<small>${g.date} ${g.time} · ${Math.ceil(g.moves / 2)} move${Math.ceil(g.moves / 2) === 1 ? "" : "s"}</small>`;
+      (g.notes ? `<div class="gname">${esc(g.notes.split("\n")[0])}</div>` : "") + `<small>${g.date} ${g.time} · ${Math.ceil(g.moves / 2)} move${Math.ceil(g.moves / 2) === 1 ? "" : "s"}</small>`;
     d.onclick = () => openGame(g.id); el.appendChild(d);
   });
 }
@@ -402,7 +421,7 @@ async function openGame(id) {
   game = await api("/api/game?id=" + encodeURIComponent(id)); ply = game.plies.length - 1; vari = null; replayFrom = null;
   ana = null; clearTimeout(anaTimer); $("anaMsg").textContent = ""; $("analyzeBtn").classList.remove("hidden");
   await pollAnalysis(false);
-  renderReplay(); loadLibrary();
+  renderReplay(); renderGameActions(); loadLibrary();
 }
 async function pollAnalysis(keepGoing) {
   if (!game) return;
@@ -576,16 +595,41 @@ window.addEventListener("keydown", (e) => {
   if (!$("library").classList.contains("active")) return;
   if (e.key === "ArrowLeft") go(ply - 1); if (e.key === "ArrowRight") go(ply + 1);
 });
-$("renameGame").onclick = async () => {
-  if (!game) return alert("Open a saved game first.");
-  const name = prompt("Name for this game (leave empty for no name):", game.name);
-  if (name === null) return;
-  await post("/api/library/rename", { id: game.id, name: name.trim() });
-  game.name = name.trim(); loadLibrary();
+function renderGameActions() {
+  ["notesGame", "copyPgn", "deleteGame", "analyzeBtn"].forEach(id => $(id).disabled = !game);
+  $("notesGame").textContent = game && game.notes ? "📝 Edit notes" : "📝 Add notes";
+  const n = $("gameNotes");
+  n.classList.toggle("hidden", !(game && game.notes));
+  n.textContent = game && game.notes ? game.notes : "";
+}
+$("notesGame").onclick = () => {
+  if (!game) return;
+  $("notesText").value = game.notes || "";
+  $("notesDlg").showModal(); $("notesText").focus();
 };
-$("copyPgn").onclick = () => { if (game) navigator.clipboard.writeText(game.pgn); };
+$("notesCancel").onclick = () => $("notesDlg").close();
+$("notesSave").onclick = async () => {
+  const notes = $("notesText").value.trim();
+  await post("/api/library/notes", { id: game.id, notes });
+  game.notes = notes; $("notesDlg").close(); renderGameActions(); loadLibrary();
+  try { game.pgn = (await api("/api/game?id=" + encodeURIComponent(game.id))).pgn; } catch (e) { }   // Copy PGN includes the notes
+};
+$("copyPgn").onclick = async () => {
+  if (!game) return;
+  let ok = false;
+  try { await navigator.clipboard.writeText(game.pgn); ok = true; } catch (e) {
+    const t = document.createElement("textarea"); t.value = game.pgn; document.body.appendChild(t); t.select();
+    try { ok = document.execCommand("copy"); } catch (e2) { } t.remove();
+  }
+  const b = $("copyPgn"), label = "Copy PGN";
+  b.textContent = ok ? "✓ Copied" : "Couldn't copy"; setTimeout(() => b.textContent = label, 1500);
+};
 $("deleteGame").onclick = async () => {
-  if (game && confirm(`Delete ${game.name ? `"${game.name}"` : "this game"}?`)) { await post("/api/library/delete", { id: game.id }); game = null; ana = null; renderAnalysis(); $("replayImg").removeAttribute("src"); $("replayMoves").innerHTML = ""; loadLibrary(); }
+  if (!game) return;
+  if (!await askYesNo("Delete this game? This can't be undone.")) return;
+  await post("/api/library/delete", { id: game.id });
+  game = null; ana = null; vari = null; renderAnalysis(); $("replayImg").removeAttribute("src"); $("replayMoves").innerHTML = "";
+  $("rPos").textContent = "-"; $("variation").classList.add("hidden"); renderGameActions(); loadLibrary();
 };
 
 // ---------------- profiles ----------------
@@ -617,7 +661,7 @@ function renderProfile() {
   const col = (side, c) => `<tr><td>${side === "white" ? "♔ White" : "♚ Black"}</td><td>${c.games}</td><td>${c.wins}</td><td>${c.draws}</td><td>${c.losses}</td><td>${pct(c.wins, c.wins + c.draws + c.losses)}</td><td>${bar(c.wins, c.draws, c.losses)}</td></tr>`;
   const opps = p.opponents.map(o => `<tr><td class="who">${avatarImg(o.avatar)}<span>${esc(o.name)}</span></td><td>${o.games}</td><td>${o.wins}</td><td>${o.draws}</td><td>${o.losses}</td><td>${pct(o.wins, o.wins + o.draws + o.losses)}</td><td>${bar(o.wins, o.draws, o.losses)}</td></tr>`).join("");
   const res = { win: "Won", loss: "Lost", draw: "Draw", unfinished: "Not finished" };
-  const recent = p.recent.map((g, i) => `<div class="g" data-i="${i}"><span class="res r-${g.result}">${res[g.result]}</span><b>vs ${esc(g.opponent)}</b>${g.name ? `<div class="gname">${esc(g.name)}</div>` : ""}<small>${g.date} · as ${g.colour === "white" ? "White" : "Black"} · ${plural(Math.ceil(g.moves / 2), "move")}</small></div>`).join("");
+  const recent = p.recent.map((g, i) => `<div class="g" data-i="${i}"><span class="res r-${g.result}">${res[g.result]}</span><b>vs ${esc(g.opponent)}</b>${g.notes ? `<div class="gname">${esc(g.notes.split("\n")[0])}</div>` : ""}<small>${g.date} · as ${g.colour === "white" ? "White" : "Black"} · ${plural(Math.ceil(g.moves / 2), "move")}</small></div>`).join("");
   box.innerHTML = `
     <div class="phead">${avatarImg(p.avatar)}<div><h2>${esc(p.name)}</h2><small>${p.games ? `Played ${p.first === p.last ? "on " + p.first : `from ${p.first} to ${p.last}`}` : "No games yet"}</small></div>
       <button id="editProfile" class="ghost">✎ Edit</button></div>
@@ -688,7 +732,7 @@ async function poll() {
 }
 
 (async function init() {
-  buildGrid();
+  buildGrid(); renderGameActions();
   S = await api("/api/state");
   if (S.mode === "tracking") showTab("play");
   scanCameras();

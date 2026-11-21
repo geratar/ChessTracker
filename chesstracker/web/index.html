@@ -154,8 +154,9 @@
           <svg id="evalGraph" class="hidden" viewBox="0 0 400 100" preserveAspectRatio="none"></svg>
           <p id="bestLine" class="best"></p>
         </div>
+        <div id="gameNotes" class="notes hidden"></div>
         <div id="replayMoves" class="moves"></div>
-        <div class="buttons"><button id="renameGame" class="ghost">✎ Rename</button>
+        <div class="buttons"><button id="notesGame" class="ghost">📝 Add notes</button>
           <button id="copyPgn" class="ghost">Copy PGN</button>
           <button id="deleteGame" class="ghost danger">Delete game</button></div>
       </div>
@@ -202,7 +203,7 @@
 <!-- Save dialog -->
 <dialog id="saveDlg">
   <h2 id="saveTitle">Save game</h2>
-  <label>Name (optional) <input id="gameName" placeholder="e.g. Club night"></label>
+  <label>Notes (optional) <input id="gameName" placeholder="e.g. Club night, great endgame"></label>
   <p>Result</p>
   <div class="results" id="results">
     <label><input type="radio" name="result" value="1-0"> White won</label>
@@ -235,6 +236,19 @@
   <p>Avatar</p>
   <div class="avatars" id="avatarGrid"></div>
   <div class="nav"><button id="newPlayerCancel" class="ghost">Cancel</button><button id="newPlayerSave" class="primary">Add player</button></div>
+</dialog>
+
+<!-- Notes dialog -->
+<dialog id="notesDlg">
+  <h2>Notes</h2>
+  <textarea id="notesText" rows="6" maxlength="2000" placeholder="Anything about this game: where you played, what you learned..."></textarea>
+  <div class="nav"><button id="notesCancel" class="ghost">Cancel</button><button id="notesSave" class="primary">Save notes</button></div>
+</dialog>
+
+<!-- In-app message / confirm (instead of browser pop-ups, which browsers can silence) -->
+<dialog id="msgDlg">
+  <p id="msgText"></p>
+  <div class="nav"><button id="msgCancel" class="ghost hidden">Cancel</button><button id="msgOk" class="primary">OK</button></div>
 </dialog>
 
 <!-- Unsaved game dialog -->
